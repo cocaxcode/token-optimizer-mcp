@@ -2,8 +2,13 @@
 // Takes an OptimizationStatus and returns Spanish actionable recommendations.
 
 import type { OptimizationStatus } from '../lib/types.js'
+import { checkSerenaHealth } from './detector.js'
+import type { DetectorPaths } from './detector.js'
 
-export function buildSuggestions(status: OptimizationStatus): string[] {
+export function buildSuggestions(
+  status: OptimizationStatus,
+  paths?: DetectorPaths,
+): string[] {
   const suggestions: string[] = []
 
   if (!status.serena.present) {
@@ -15,15 +20,23 @@ export function buildSuggestions(status: OptimizationStatus): string[] {
         '  Ahorro estimado: 20-30% en lecturas de archivos grandes.',
       ].join('\n'),
     )
-  } else if (!status.serena.signals.includes('project-registered-for-cwd')) {
-    suggestions.push(
-      [
-        '[serena] Serena esta instalada pero este proyecto no esta registrado.',
-        '  Ejecuta: mcp__serena__activate_project con la ruta de este proyecto.',
-        '  O crea .serena/project.yml en la raiz del proyecto para auto-deteccion.',
-        '  Sin proyecto activo, serena no puede hacer lecturas simbolicas.',
-      ].join('\n'),
-    )
+  } else {
+    if (!status.serena.signals.includes('project-registered-for-cwd')) {
+      suggestions.push(
+        [
+          '[serena] Serena esta instalada pero este proyecto no esta registrado.',
+          '  Ejecuta: mcp__serena__activate_project con la ruta de este proyecto.',
+          '  O crea .serena/project.yml en la raiz del proyecto para auto-deteccion.',
+          '  Sin proyecto activo, serena no puede hacer lecturas simbolicas.',
+        ].join('\n'),
+      )
+    }
+
+    // Health checks — only when serena is present
+    const healthWarnings = checkSerenaHealth(paths)
+    for (const w of healthWarnings) {
+      suggestions.push(`[serena] ⚠ ${w.message}\n  Fix: ${w.fix}`)
+    }
   }
 
   if (!status.rtk.present) {

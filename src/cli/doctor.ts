@@ -7,6 +7,7 @@ import {
   probeRtk,
   probeMcpPruning,
   probePromptCaching,
+  checkSerenaHealth,
 } from '../orchestration/detector.js'
 import { measureCurrentSchemaBytes } from '../orchestration/schema-measurer.js'
 import { buildSuggestions } from '../orchestration/advisor.js'
@@ -54,6 +55,12 @@ export function runDoctor(_args: string[] = [], opts: DoctorOptions = {}): numbe
   lines.push(
     `[serena]        ${symbol(status.serena.present)} conf=${status.serena.confidence.toFixed(2)}  signals: ${status.serena.signals.join(', ') || '(ninguno)'}`,
   )
+  if (serena.present) {
+    const healthWarnings = checkSerenaHealth(paths)
+    for (const w of healthWarnings) {
+      lines.push(`  ⚠ ${w.message} — ${w.fix}`)
+    }
+  }
   lines.push(
     `[rtk]           ${symbol(status.rtk.present)} conf=${status.rtk.confidence.toFixed(2)}  signals: ${status.rtk.signals.join(', ') || '(ninguno)'}`,
   )
@@ -67,7 +74,7 @@ export function runDoctor(_args: string[] = [], opts: DoctorOptions = {}): numbe
     `[schema-size]   ~${schema.tool_schema_tokens} tokens / ${schema.tool_schema_bytes} bytes (${schema.measurement_method}) — ${schema.mcp_servers.length} MCP server(s): ${schema.mcp_servers.join(', ') || '(ninguno)'}`,
   )
 
-  const suggestions = buildSuggestions(status)
+  const suggestions = buildSuggestions(status, paths)
   if (suggestions.length > 0) {
     lines.push('')
     lines.push('Sugerencias:')

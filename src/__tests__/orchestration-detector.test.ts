@@ -8,6 +8,7 @@ import {
   probeRtk,
   probeMcpPruning,
   probePromptCaching,
+  checkSerenaHealth,
 } from '../orchestration/detector.js'
 
 async function makeTempRoot(): Promise<string> {
@@ -212,5 +213,105 @@ describe('probePromptCaching', () => {
     expect(result.present).toBe(true)
     expect(result.confidence).toBe(0.5)
     expect((result.details as { note: string }).note).toContain('factura Anthropic')
+  })
+})
+
+describe('checkSerenaHealth', () => {
+  let home: string
+  let cwd: string
+
+  beforeEach(async () => {
+    home = await makeTempRoot()
+    cwd = await makeTempRoot()
+  })
+
+  afterEach(() => {
+    fs.rmSync(home, { recursive: true, force: true })
+    fs.rmSync(cwd, { recursive: true, force: true })
+  })
+
+  it('returns only context warning when no serena config exists but no MCP args found', () => {
+    const warnings = checkSerenaHealth({ home, cwd })
+    // No serena_config.yml → no dashboard warning
+    // No MCP config with --context → context warning
+    const ids = warnings.map((w) => w.id)
+    expect(ids).not.toContain('dashboard-auto-open')
+    expect(ids).toContain('missing-context-claude-code')
+  })
+
+  it('warns when web_dashboard_open_on_launch is true', () => {
+    const configDir = path.join(home, '.serena')
+    fs.mkdirSync(configDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(configDir, 'serena_config.yml'),
+      'web_dashboard: true\nweb_dashboard_open_on_launch: true\n',
+    )
+    const warnings = checkSerenaHealth({ home, cwd })
+    const ids = warnings.map((w) => w.id)
+    expect(ids).toContain('dashboard-auto-open')
+  })
+
+  it('no dashboard warning when web_dashboard_open_on_launch is false', () => {
+    const configDir = path.join(home, '.serena')
+    fs.mkdirSync(configDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(configDir, 'serena_config.yml'),
+      'web_dashboard: true\nweb_dashboard_open_on_launch: false\n',
+    )
+    const warnings = checkSerenaHealth({ home, cwd })
+    const ids = warnings.map((w) => w.id)
+    expect(ids).not.toContain('dashboard-auto-open')
+  })
+
+  it('warns when web_dashboard_open_on_launch is not set (defaults to true)', () => {
+    const configDir = path.join(home, '.serena')
+    fs.mkdirSync(configDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(configDir, 'serena_config.yml'),
+      'web_dashboard: true\nlog_level: 20\n',
+    )
+    const warnings = checkSerenaHealth({ home, cwd })
+    const ids = warnings.map((w) => w.id)
+    expect(ids).toContain('dashboard-auto-open')
+  })
+
+  it('warns when --context claude-code is missing from MCP args', () => {
+    // Serena registered but without --context flag
+    writeJson(path.join(home, '.claude', 'settings.json'), {
+      mcpServers: { serena: { command: 'uvx', args: ['--from', 'git+https://github.com/oraios/serena', 'serena', 'start-mcp-server'] } },
+    })
+    const warnings = checkSerenaHealth({ home, cwd })
+    const ids = warnings.map((w) => w.id)
+    expect(ids).toContain('missing-context-claude-code')
+  })
+
+  it('no context warning when --context claude-code is in MCP args', () => {
+    writeJson(path.join(home, '.claude', 'settings.json'), {
+      mcpServers: { serena: { command: 'uvx', args: ['--from', 'git+https://github.com/oraios/serena', 'serena', 'start-mcp-server', '--context', 'claude-code'] } },
+    })
+    const warnings = checkSerenaHealth({ home, cwd })
+    const ids = warnings.map((w) => w.id)
+    expect(ids).not.toContain('missing-context-claude-code')
+  })
+
+  it('finds --context claude-code in plugin .mcp.json files', () => {
+    // No settings files, but plugin has the flag
+    const pluginDir = path.join(home, '.claude', 'plugins', 'serena')
+    fs.mkdirSync(pluginDir, { recursive: true })
+    writeJson(path.join(pluginDir, '.mcp.json'), {
+      serena: { command: 'uvx', args: ['serena', 'start-mcp-server', '--context', 'claude-code'] },
+    })
+    const warnings = checkSerenaHealth({ home, cwd })
+    const ids = warnings.map((w) => w.id)
+    expect(ids).not.toContain('missing-context-claude-code')
+  })
+
+  it('finds --context claude-code in local project settings', () => {
+    writeJson(path.join(cwd, '.claude', 'settings.local.json'), {
+      mcpServers: { 'my-serena': { command: 'uvx', args: ['serena', 'start-mcp-server', '--context', 'claude-code'] } },
+    })
+    const warnings = checkSerenaHealth({ home, cwd })
+    const ids = warnings.map((w) => w.id)
+    expect(ids).not.toContain('missing-context-claude-code')
   })
 })

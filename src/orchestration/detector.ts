@@ -5,7 +5,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
-import type { DetectionResult } from '../lib/types.js'
+import type { DetectionResult, SerenaHealthWarning } from '../lib/types.js'
 
 function readSettings(p: string): Record<string, unknown> | null {
   try {
@@ -108,6 +108,122 @@ export function probeSerena(paths: DetectorPaths = {}): DetectionResult {
       }
     },
   ])
+}
+
+/**
+ * Health checks for Serena configuration.
+ * Separate from probeSerena() (presence detection) to avoid polluting confidence scores.
+ * Returns actionable warnings when Serena is misconfigured for Claude Code usage.
+ */
+export function checkSerenaHealth(paths: DetectorPaths = {}): SerenaHealthWarning[] {
+  const home = paths.home ?? os.homedir()
+  const cwd = paths.cwd ?? process.cwd()
+  const warnings: SerenaHealthWarning[] = []
+
+  // Check 1: web_dashboard_open_on_launch should be false
+  try {
+    const configPath = path.join(home, '.serena', 'serena_config.yml')
+    if (fs.existsSync(configPath)) {
+      const content = fs.readFileSync(configPath, 'utf8')
+      const match = content.match(/web_dashboard_open_on_launch\s*:\s*(\w+)/)
+      const value = match ? match[1].toLowerCase() : 'true' // default is true
+      if (value === 'true') {
+        warnings.push({
+          id: 'dashboard-auto-open',
+          message: 'El dashboard de Serena se abre automaticamente al iniciar cada terminal',
+          fix: 'Pon web_dashboard_open_on_launch: false en ~/.serena/serena_config.yml',
+        })
+      }
+    }
+  } catch {
+    // swallow
+  }
+
+  // Check 2: --context claude-code should be in MCP server args
+  try {
+    const hasContextFlag = checkSerenaContextFlag(home, cwd)
+    if (!hasContextFlag) {
+      warnings.push({
+        id: 'missing-context-claude-code',
+        message: 'Serena no usa el contexto claude-code (modo headless optimizado para CLI)',
+        fix: 'Añade --context claude-code a los args del MCP server de serena',
+      })
+    }
+  } catch {
+    // swallow
+  }
+
+  return warnings
+}
+
+function checkSerenaContextFlag(home: string, cwd: string): boolean {
+  // Search across all possible MCP config locations
+  const settingsFiles = [
+    path.join(home, '.claude', 'settings.json'),
+    path.join(home, '.claude.json'),
+    path.join(cwd, '.claude', 'settings.json'),
+    path.join(cwd, '.claude', 'settings.local.json'),
+  ]
+
+  for (const file of settingsFiles) {
+    if (hasContextClaudeCodeInFile(file)) return true
+  }
+
+  // Also check plugin .mcp.json files
+  try {
+    const pluginsDir = path.join(home, '.claude', 'plugins')
+    if (fs.existsSync(pluginsDir)) {
+      const mcpFiles = findMcpJsonFiles(pluginsDir)
+      for (const file of mcpFiles) {
+        if (hasContextClaudeCodeInFile(file)) return true
+      }
+    }
+  } catch {
+    // swallow
+  }
+
+  return false
+}
+
+function hasContextClaudeCodeInFile(filePath: string): boolean {
+  try {
+    if (!fs.existsSync(filePath)) return false
+    const json = JSON.parse(fs.readFileSync(filePath, 'utf8'))
+
+    // Check mcpServers keys for serena entries
+    const servers = json.mcpServers ?? json
+    if (!servers || typeof servers !== 'object') return false
+
+    for (const key of Object.keys(servers)) {
+      if (!key.toLowerCase().includes('serena')) continue
+      const server = servers[key]
+      if (!server || !Array.isArray(server.args)) continue
+      const args = server.args as string[]
+      const ctxIdx = args.indexOf('--context')
+      if (ctxIdx >= 0 && args[ctxIdx + 1] === 'claude-code') return true
+    }
+  } catch {
+    // swallow
+  }
+  return false
+}
+
+function findMcpJsonFiles(dir: string): string[] {
+  const results: string[] = []
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true })
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        results.push(...findMcpJsonFiles(full))
+      } else if (entry.name === '.mcp.json') {
+        results.push(full)
+      }
+    }
+  } catch {
+    // swallow
+  }
+  return results
 }
 
 export function probeRtk(paths: DetectorPaths = {}): DetectionResult {

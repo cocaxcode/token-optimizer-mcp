@@ -92,8 +92,10 @@ describe('runDoctor', () => {
     const sugIndex = output.indexOf('Sugerencias')
     if (sugIndex >= 0) {
       const sugSection = output.slice(sugIndex)
-      // Neither install nor registration suggestions for serena
-      expect(sugSection).not.toContain('[serena]')
+      // No install or registration suggestions for serena
+      expect(sugSection).not.toContain('[serena] Para lecturas simbolicas')
+      expect(sugSection).not.toContain('[serena] Serena esta instalada pero este proyecto no esta registrado')
+      // Health warnings (dashboard, context) are expected and OK
     }
   })
 })

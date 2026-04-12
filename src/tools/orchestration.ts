@@ -12,6 +12,7 @@ import {
   probeRtk,
   probeMcpPruning,
   probePromptCaching,
+  checkSerenaHealth,
 } from '../orchestration/detector.js'
 import { measureCurrentSchemaBytes } from '../orchestration/schema-measurer.js'
 import { buildSuggestions } from '../orchestration/advisor.js'
@@ -126,8 +127,9 @@ export function registerOrchestrationTools(server: McpServer, db: DB): void {
             measurement_method: schema.measurement_method,
           },
         }
+        const serenaHealth = serena.present ? checkSerenaHealth() : []
         const suggestions = buildSuggestions(status)
-        return text(JSON.stringify({ status, suggestions }, null, 2))
+        return text(JSON.stringify({ status, serena_health: serenaHealth, suggestions }, null, 2))
       } catch (e) {
         return error(e instanceof Error ? e.message : String(e))
       }

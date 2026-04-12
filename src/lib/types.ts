@@ -65,6 +65,12 @@ export interface DetectionResult {
   details: Record<string, unknown>
 }
 
+export interface SerenaHealthWarning {
+  id: string
+  message: string
+  fix: string
+}
+
 export interface OptimizationStatus {
   serena: DetectionResult
   rtk: DetectionResult
