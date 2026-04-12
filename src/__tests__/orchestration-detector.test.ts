@@ -39,13 +39,22 @@ describe('probeSerena', () => {
     expect(result.confidence).toBe(0)
   })
 
-  it('detects serena in global settings', () => {
+  it('detects serena in global settings.json', () => {
     writeJson(path.join(home, '.claude', 'settings.json'), {
       mcpServers: { 'serena-mcp': { command: 'uvx' } },
     })
     const result = probeSerena({ home, cwd })
     expect(result.present).toBe(true)
-    expect(result.signals).toContain('global-mcp-registered')
+    expect(result.signals).toContain('global-settings-registered')
+  })
+
+  it('detects serena in ~/.claude.json', () => {
+    writeJson(path.join(home, '.claude.json'), {
+      mcpServers: { serena: { command: 'serena', args: ['start-mcp-server'] } },
+    })
+    const result = probeSerena({ home, cwd })
+    expect(result.present).toBe(true)
+    expect(result.signals).toContain('claude-json-registered')
   })
 
   it('detects serena in project local settings', () => {
@@ -57,7 +66,7 @@ describe('probeSerena', () => {
     expect(result.signals).toContain('local-mcp-registered')
   })
 
-  it('confidence scales with number of signals', () => {
+  it('confidence scales with number of signals (4 checks total)', () => {
     writeJson(path.join(home, '.claude', 'settings.json'), {
       mcpServers: { serena: {} },
     })
@@ -65,7 +74,8 @@ describe('probeSerena', () => {
       mcpServers: { serena: {} },
     })
     const result = probeSerena({ home, cwd })
-    expect(result.confidence).toBeCloseTo(2 / 3, 2)
+    // 2 hits out of 4 total checks
+    expect(result.confidence).toBeCloseTo(2 / 4, 2)
   })
 })
 

@@ -25,6 +25,10 @@ function globalSettings(home: string): string {
   return path.join(home, '.claude', 'settings.json')
 }
 
+function globalClaudeJson(home: string): string {
+  return path.join(home, '.claude.json')
+}
+
 function localSettings(cwd: string): string {
   return path.join(cwd, '.claude', 'settings.local.json')
 }
@@ -74,7 +78,12 @@ export function probeSerena(paths: DetectorPaths = {}): DetectionResult {
   return runProbe('serena', [
     () => {
       const keys = mcpServerKeys(readSettings(globalSettings(home)))
-      return [keys.some((k) => k.toLowerCase().includes('serena')), 'global-mcp-registered']
+      return [keys.some((k) => k.toLowerCase().includes('serena')), 'global-settings-registered']
+    },
+    () => {
+      // ~/.claude.json — Claude Code also reads MCP servers from here
+      const keys = mcpServerKeys(readSettings(globalClaudeJson(home)))
+      return [keys.some((k) => k.toLowerCase().includes('serena')), 'claude-json-registered']
     },
     () => {
       const keys = mcpServerKeys(readSettings(teamSettings(cwd)))

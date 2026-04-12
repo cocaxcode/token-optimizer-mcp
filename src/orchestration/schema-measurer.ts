@@ -52,6 +52,7 @@ export function measureCurrentSchemaBytes(
   const cwd = opts.cwd ?? process.cwd()
   const sources = [
     readJson(path.join(home, '.claude', 'settings.json')),
+    readJson(path.join(home, '.claude.json')), // Claude Code also reads MCPs from here
     readJson(path.join(cwd, '.claude', 'settings.json')),
     readJson(path.join(cwd, '.claude', 'settings.local.json')),
   ]
