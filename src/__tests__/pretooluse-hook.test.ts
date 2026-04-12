@@ -99,9 +99,8 @@ describe('runPreToolUseHook', () => {
     expect(decision.reason).toContain('Presupuesto')
   })
 
-  it('never sets updatedInput (RTK coexistence)', () => {
-    // Regardless of decision path, updatedInput must NEVER appear
-    // This is the key invariant that lets RTK coexist as the sole Bash-filter hook
+  it('never sets updatedInput when RTK is not available', () => {
+    // When RTK is explicitly disabled (rtkPath: null), updatedInput must NEVER appear
     const db = getDb(':memory:')
     const manager = new BudgetManager(db)
     manager.setBudget({ scope: 'session', scope_key: 'sess-1', limit_tokens: 10, mode: 'warn' })
@@ -112,6 +111,7 @@ describe('runPreToolUseHook', () => {
       dbPath: ':memory:',
       projectDir: PROJECT_DIR,
       writeStdout: false,
+      rtkPath: null,
     })
     expect(passthroughDecision).not.toHaveProperty('updatedInput')
 
@@ -120,6 +120,7 @@ describe('runPreToolUseHook', () => {
       dbPath: ':memory:',
       projectDir: PROJECT_DIR,
       writeStdout: false,
+      rtkPath: null,
     })
     expect(warnDecision).not.toHaveProperty('updatedInput')
 
@@ -130,8 +131,26 @@ describe('runPreToolUseHook', () => {
       dbPath: ':memory:',
       projectDir: PROJECT_DIR,
       writeStdout: false,
+      rtkPath: null,
     })
     expect(blockDecision).not.toHaveProperty('updatedInput')
+  })
+
+  it('budget block wins over RTK rewrite (no updatedInput on block)', () => {
+    const db = getDb(':memory:')
+    const manager = new BudgetManager(db)
+    manager.setBudget({ scope: 'session', scope_key: 'sess-1', limit_tokens: 10, mode: 'block' })
+    seedAnalyticsDb(db, [makeEvent({ session_id: 'sess-1', tokens_estimated: 100 })])
+    // Even with a valid RTK path, block should prevent rewrite
+    const decision = runPreToolUseHook({
+      stdin: hookInput(),
+      dbPath: ':memory:',
+      projectDir: PROJECT_DIR,
+      writeStdout: false,
+      rtkPath: process.execPath, // fake "rtk" (would fail anyway, but proves block runs first)
+    })
+    expect(decision.decision).toBe('block')
+    expect(decision).not.toHaveProperty('updatedInput')
   })
 
   it('handles malformed stdin gracefully', () => {

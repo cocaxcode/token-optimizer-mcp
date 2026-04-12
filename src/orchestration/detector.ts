@@ -111,6 +111,19 @@ export function probeRtk(paths: DetectorPaths = {}): DetectionResult {
       return [fs.existsSync(bin), 'rtk-binary-in-cargo']
     },
     () => {
+      // Check common PATH locations directly (avoid dynamic import in sync probe)
+      const pathDirs = (process.env.PATH ?? '').split(path.delimiter)
+      const binName = process.platform === 'win32' ? 'rtk.exe' : 'rtk'
+      const found = pathDirs.some((dir) => {
+        try {
+          return fs.existsSync(path.join(dir, binName))
+        } catch {
+          return false
+        }
+      })
+      return [found, 'rtk-binary-in-path']
+    },
+    () => {
       const json = readSettings(globalSettings(home))
       const hooks = json?.hooks
       if (!hooks || typeof hooks !== 'object') return [false, 'rtk-hook-registered']

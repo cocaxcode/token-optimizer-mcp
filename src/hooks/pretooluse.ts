@@ -1,6 +1,7 @@
-// PreToolUse hook entry — Phase 2.6
-// ONLY acts on Bash tool. NEVER sets updatedInput (anthropics/claude-code#36843)
-// Decision tree: passthrough / warn (additionalContext) / block (decision:block)
+// PreToolUse hook entry — Phase 2.6 + v0.2.0 RTK bridge
+// Acts on Bash tool: budget check first, then RTK rewrite if available.
+// Sets updatedInput ONLY when RTK rewrites successfully (exit 0 or 3).
+// Budget block always wins over RTK rewrite.
 
 import fs from 'node:fs'
 import { getDb } from '../db/connection.js'
@@ -12,6 +13,7 @@ import {
   projectHash,
 } from '../lib/paths.js'
 import { ensureStorageDir } from '../lib/storage.js'
+import { findRtkBinary, rtkRewrite } from '../lib/rtk-bridge.js'
 
 export interface PreToolUseInput {
   session_id?: string
@@ -26,6 +28,8 @@ export interface PreToolUseDecision {
   decision?: 'block'
   reason?: string
   additionalContext?: string
+  updatedInput?: { command: string }
+  permissionDecision?: string
 }
 
 function readStdinSync(): string {
@@ -41,6 +45,8 @@ export interface RunPreToolUseOptions {
   dbPath?: string
   projectDir?: string
   writeStdout?: boolean
+  /** Override RTK binary path for testing; null = disable RTK */
+  rtkPath?: string | null
 }
 
 export function runPreToolUseHook(
@@ -59,7 +65,7 @@ export function runPreToolUseHook(
     return passthrough
   }
 
-  // Only gate on Bash calls
+  // Only act on Bash calls
   if (parsed.tool_name !== 'Bash') {
     if (opts.writeStdout !== false) {
       process.stdout.write(JSON.stringify(passthrough))
@@ -71,8 +77,9 @@ export function runPreToolUseHook(
   const estimatedCost = estimateTokensFast(command)
   const sessionId = parsed.session_id ?? 'default'
 
-  let decision: PreToolUseDecision = passthrough
+  const decision: PreToolUseDecision = {}
 
+  // ── Step 1: Budget check ──
   try {
     const projectDir = opts.projectDir ?? resolveProjectDir()
     let dbPath: string
@@ -86,31 +93,52 @@ export function runPreToolUseHook(
     const manager = new BudgetManager(db)
     const status = manager.checkBudget(sessionId, projectHash(projectDir))
 
-    if (!status.active) {
-      decision = passthrough
-    } else {
-      const wouldSpend = status.spent + estimatedCost
-      const wouldExceed = wouldSpend > status.spent + status.remaining
-      if (!wouldExceed) {
-        decision = passthrough
-      } else if (status.mode === 'warn') {
-        decision = {
-          additionalContext: `⚠️ Presupuesto excedido: ${status.spent}+${estimatedCost} tokens > limite. Considera /compact o reducir alcance.`,
+    if (status.active) {
+      const wouldExceed = status.spent + estimatedCost > status.spent + status.remaining
+      if (wouldExceed) {
+        if (status.mode === 'block') {
+          // Block wins — no RTK rewrite attempted
+          decision.decision = 'block'
+          decision.reason = `Presupuesto excedido (modo block): ${status.spent}+${estimatedCost} tokens > limite. Ejecuta budget_set para ajustar o /compact para liberar contexto.`
+          const active = manager.getActiveBudget(sessionId, projectHash(projectDir))
+          if (active) manager.recordBudgetEvent(active.id, 'block', estimatedCost)
+
+          if (opts.writeStdout !== false) {
+            process.stdout.write(JSON.stringify(decision))
+          }
+          return decision
         }
+        // Warn mode — add context but continue to RTK
+        decision.additionalContext = `⚠️ Presupuesto excedido: ${status.spent}+${estimatedCost} tokens > limite. Considera /compact o reducir alcance.`
         const active = manager.getActiveBudget(sessionId, projectHash(projectDir))
         if (active) manager.recordBudgetEvent(active.id, 'warn', estimatedCost)
-      } else {
-        decision = {
-          decision: 'block',
-          reason: `Presupuesto excedido (modo block): ${status.spent}+${estimatedCost} tokens > limite. Ejecuta budget_set para ajustar o /compact para liberar contexto.`,
-        }
-        const active = manager.getActiveBudget(sessionId, projectHash(projectDir))
-        if (active) manager.recordBudgetEvent(active.id, 'block', estimatedCost)
       }
     }
   } catch {
-    // Hook must never block due to persistence errors
-    decision = passthrough
+    // Budget errors never block — continue to RTK
+  }
+
+  // ── Step 2: RTK rewrite (if available) ──
+  try {
+    const rtkPath =
+      opts.rtkPath !== undefined ? opts.rtkPath : findRtkBinary()
+    if (rtkPath && command.trim()) {
+      const result = rtkRewrite(command, rtkPath)
+      if (result) {
+        if (result.exitCode === 0 && result.rewritten) {
+          // Exit 0: rewrite + auto-allow
+          decision.updatedInput = { command: result.rewritten }
+          decision.permissionDecision = 'allow'
+        } else if (result.exitCode === 3 && result.rewritten) {
+          // Exit 3: rewrite + ask user for permission
+          decision.updatedInput = { command: result.rewritten }
+          // No permissionDecision — Claude Code will prompt the user
+        }
+        // Exit 1 (no rewrite) or 2 (deny): passthrough, no updatedInput
+      }
+    }
+  } catch {
+    // RTK errors never block — continue without rewrite
   }
 
   if (opts.writeStdout !== false) {
