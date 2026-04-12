@@ -47,6 +47,7 @@ describe('runPreToolUseHook', () => {
       dbPath: ':memory:',
       projectDir: PROJECT_DIR,
       writeStdout: false,
+      rtkPath: null,
     })
     expect(decision).toEqual({})
   })
@@ -60,6 +61,7 @@ describe('runPreToolUseHook', () => {
       dbPath: ':memory:',
       projectDir: PROJECT_DIR,
       writeStdout: false,
+      rtkPath: null,
     })
     expect(decision).toEqual({})
   })
@@ -169,6 +171,7 @@ describe('runPreToolUseHook', () => {
       dbPath: ':memory:',
       projectDir: PROJECT_DIR,
       writeStdout: false,
+      rtkPath: null,
     })
     expect(decision).toEqual({})
   })

@@ -94,8 +94,15 @@ describe('probeRtk', () => {
   })
 
   it('returns absent when nothing present', () => {
-    const result = probeRtk({ home, cwd })
-    expect(result.present).toBe(false)
+    // Isolate PATH so the real rtk.exe on this machine isn't found
+    const origPath = process.env.PATH
+    process.env.PATH = home
+    try {
+      const result = probeRtk({ home, cwd })
+      expect(result.present).toBe(false)
+    } finally {
+      process.env.PATH = origPath
+    }
   })
 
   it('detects rtk tracking db', () => {

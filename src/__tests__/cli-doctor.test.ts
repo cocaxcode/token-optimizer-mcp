@@ -38,15 +38,22 @@ describe('runDoctor', () => {
   })
 
   it('includes 3 suggestions when nothing is installed', () => {
-    runDoctor([], { home, cwd, print })
-    const output = captured.join('\n')
-    expect(output).toContain('Sugerencias')
-    expect(output).toContain('[serena]')
-    expect(output).toContain('uvx')
-    expect(output).toContain('[rtk]')
-    expect(output).toContain('github.com/standard-input/rtk')
-    expect(output).toContain('[mcp-pruning]')
-    expect(output).toContain('mcp_prune_suggest')
+    // Isolate PATH so the real rtk binary on this machine isn't found
+    const origPath = process.env.PATH
+    process.env.PATH = home
+    try {
+      runDoctor([], { home, cwd, print })
+      const output = captured.join('\n')
+      expect(output).toContain('Sugerencias')
+      expect(output).toContain('[serena]')
+      expect(output).toContain('uvx')
+      expect(output).toContain('[rtk]')
+      expect(output).toContain('github.com/standard-input/rtk')
+      expect(output).toContain('[mcp-pruning]')
+      expect(output).toContain('mcp_prune_suggest')
+    } finally {
+      process.env.PATH = origPath
+    }
   })
 
   it('omits serena suggestion when serena is detected', () => {
