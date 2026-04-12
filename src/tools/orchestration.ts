@@ -23,6 +23,8 @@ import {
   clearAllowlist,
 } from '../cli/prune-mcp.js'
 import type { OptimizationStatus } from '../lib/types.js'
+import { buildSessionSummary } from '../services/session-summary-builder.js'
+import { postSummaryToXray } from '../services/xray-client.js'
 
 type DB = Database.Database
 
@@ -70,7 +72,7 @@ export function registerOrchestrationTools(server: McpServer, db: DB): void {
   // ── mcp_cost_report ──
   server.tool(
     'mcp_cost_report',
-    'Reporte de coste estimado con rango Sonnet-Opus y disclaimer honesto.',
+    'Reporte de coste estimado con rango Haiku-Sonnet-Opus y disclaimer honesto.',
     {
       days: z
         .number()
@@ -87,7 +89,10 @@ export function registerOrchestrationTools(server: McpServer, db: DB): void {
           `Reporte de coste (${cost.period_days} dia(s)):`,
           '',
           `Tokens totales: ${cost.total_tokens}`,
-          `Rango estimado: $${cost.estimated_cost_usd_min.toFixed(4)} (Sonnet) - $${cost.estimated_cost_usd_max.toFixed(4)} (Opus)`,
+          `Coste estimado (input pricing):`,
+          `  Haiku 4.5:  $${cost.estimated_cost_usd_haiku.toFixed(4)}  ($1/MTok)`,
+          `  Sonnet 4.6: $${cost.estimated_cost_usd_sonnet.toFixed(4)}  ($3/MTok)`,
+          `  Opus 4.6:   $${cost.estimated_cost_usd_opus.toFixed(4)}  ($5/MTok)`,
           '',
           `Nota: ${cost.disclaimer}`,
         ]
@@ -129,6 +134,20 @@ export function registerOrchestrationTools(server: McpServer, db: DB): void {
         }
         const serenaHealth = serena.present ? checkSerenaHealth() : []
         const suggestions = buildSuggestions(status)
+
+        // Fire-and-forget summary to xray (if XRAY_URL is set)
+        try {
+          const lastSession = db
+            .prepare('SELECT id FROM sessions ORDER BY started_at DESC LIMIT 1')
+            .get() as { id: string } | undefined
+          if (lastSession) {
+            const summary = buildSessionSummary(db, lastSession.id, '0.2.6')
+            void postSummaryToXray(summary as unknown as Record<string, unknown>).catch(() => {})
+          }
+        } catch {
+          // Silent — xray is optional
+        }
+
         return text(JSON.stringify({ status, serena_health: serenaHealth, suggestions }, null, 2))
       } catch (e) {
         return error(e instanceof Error ? e.message : String(e))

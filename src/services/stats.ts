@@ -9,8 +9,12 @@ import type { BudgetStatus } from '../lib/types.js'
 type DB = Database.Database
 
 const DAY_MS = 86_400_000
-const SONNET_COST_PER_MTOK = 3
-const OPUS_COST_PER_MTOK = 15
+// Pricing April 2026 — input tokens (tool output → model input)
+// Haiku 4.5: $1/$5, Sonnet 4.6: $3/$15, Opus 4.6: $5/$25 per MTok (input/output)
+// token-optimizer tracks tool output (= model input), so we use input pricing.
+const HAIKU_INPUT_PER_MTOK = 1
+const SONNET_INPUT_PER_MTOK = 3
+const OPUS_INPUT_PER_MTOK = 5
 
 function sinceDays(days: number): string {
   return new Date(Date.now() - days * DAY_MS).toISOString()
@@ -28,7 +32,12 @@ export interface UsageStats {
 export interface CostReport {
   period_days: number
   total_tokens: number
+  estimated_cost_usd_haiku: number
+  estimated_cost_usd_sonnet: number
+  estimated_cost_usd_opus: number
+  /** @deprecated Use estimated_cost_usd_haiku */
   estimated_cost_usd_min: number
+  /** @deprecated Use estimated_cost_usd_opus */
   estimated_cost_usd_max: number
   by_source: SourceCountRow[]
   disclaimer: string
@@ -60,16 +69,21 @@ export function getUsageStats(db: DB, days = 7): UsageStats {
 
 export function getCostReport(db: DB, days = 7): CostReport {
   const usage = getUsageStats(db, days)
-  const min = Number(((usage.total_tokens / 1_000_000) * SONNET_COST_PER_MTOK).toFixed(4))
-  const max = Number(((usage.total_tokens / 1_000_000) * OPUS_COST_PER_MTOK).toFixed(4))
+  const mtok = usage.total_tokens / 1_000_000
+  const haiku = Number((mtok * HAIKU_INPUT_PER_MTOK).toFixed(4))
+  const sonnet = Number((mtok * SONNET_INPUT_PER_MTOK).toFixed(4))
+  const opus = Number((mtok * OPUS_INPUT_PER_MTOK).toFixed(4))
   return {
     period_days: days,
     total_tokens: usage.total_tokens,
-    estimated_cost_usd_min: min,
-    estimated_cost_usd_max: max,
+    estimated_cost_usd_haiku: haiku,
+    estimated_cost_usd_sonnet: sonnet,
+    estimated_cost_usd_opus: opus,
+    estimated_cost_usd_min: haiku,
+    estimated_cost_usd_max: opus,
     by_source: usage.by_source,
     disclaimer:
-      'Rango basado en tarifas Sonnet (min) y Opus (max) input. Revisa tu factura Anthropic para el coste real.',
+      'Coste estimado de tokens de herramientas (input al modelo). Haiku $1, Sonnet $3, Opus $5 por MTok. Revisa tu factura Anthropic para el coste real.',
   }
 }
 

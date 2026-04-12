@@ -72,6 +72,42 @@ export function surfaceWithDedupe(
   return surfaced
 }
 
+/**
+ * Read all coach tips surfaced during a session, grouped by rule.
+ * Used by session-summary-builder for xray integration.
+ */
+export function getCoachSurfaceLog(
+  db: DB,
+  sessionId: string,
+): Array<{ rule_id: string; tip_ids: string[]; severity: string }> {
+  const rows = db
+    .prepare(
+      `SELECT rule_id, tip_id, severity
+       FROM coach_surface_log
+       WHERE session_id = ?
+       ORDER BY created_at`,
+    )
+    .all(sessionId) as Array<{ rule_id: string; tip_id: string; severity: string }>
+
+  // Group tip_ids by rule_id
+  const map = new Map<string, { tip_ids: string[]; severity: string }>()
+  for (const row of rows) {
+    if (!map.has(row.rule_id)) {
+      map.set(row.rule_id, { tip_ids: [], severity: row.severity })
+    }
+    const entry = map.get(row.rule_id)!
+    if (!entry.tip_ids.includes(row.tip_id)) {
+      entry.tip_ids.push(row.tip_id)
+    }
+  }
+
+  return Array.from(map.entries()).map(([rule_id, v]) => ({
+    rule_id,
+    tip_ids: v.tip_ids,
+    severity: v.severity,
+  }))
+}
+
 export function clearSurfaceLog(db: DB, sessionId?: string): number {
   if (sessionId) {
     const info = db.prepare(`DELETE FROM coach_surface_log WHERE session_id = ?`).run(sessionId)

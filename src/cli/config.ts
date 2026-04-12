@@ -20,6 +20,7 @@ export interface CoachConfig {
 }
 
 export interface Config {
+  xray_url: string | null
   shadow_measurement: {
     serena: boolean
   }
@@ -30,6 +31,7 @@ export interface Config {
 }
 
 export const DEFAULT_CONFIG: Config = {
+  xray_url: null,
   shadow_measurement: { serena: false },
   rtk_integration: { rtk_db_path: null },
   coach: {
@@ -160,4 +162,12 @@ export function runConfigCommand(args: string[], opts: ConfigCliOptions = {}): n
   }
   print('Uso: token-optimizer-mcp config <get|set> [key] [value]')
   return 1
+}
+
+/**
+ * Resolve xray URL: config.json xray_url > XRAY_URL env var > null
+ */
+export function resolveXrayUrl(home?: string): string | null {
+  const cfg = loadConfig(home)
+  return cfg.xray_url ?? process.env.XRAY_URL ?? null
 }

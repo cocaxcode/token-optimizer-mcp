@@ -3,6 +3,7 @@
 // Silent on all failures: no stderr, no throw. Timeout 500ms for post, 300ms for get.
 
 import type { ContextMeasurement } from '../lib/types.js'
+import { resolveXrayUrl } from '../cli/config.js'
 
 const POST_TIMEOUT_MS = 500
 const GET_TIMEOUT_MS = 300
@@ -26,7 +27,7 @@ export async function postToXray(
   event: Record<string, unknown>,
   opts: PostToXrayOptions = {},
 ): Promise<boolean> {
-  const xrayUrl = opts.xrayUrl ?? process.env.XRAY_URL
+  const xrayUrl = opts.xrayUrl ?? resolveXrayUrl()
   if (!xrayUrl) return false
   const fetchFn = opts.fetchImpl ?? fetch
   const controller = new AbortController()
@@ -39,6 +40,40 @@ export async function postToXray(
         source: 'token-optimizer-mcp',
         version: VERSION,
         event,
+      }),
+      signal: controller.signal,
+    })
+    return true
+  } catch {
+    return false
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+const SUMMARY_TIMEOUT_MS = 2000
+
+/**
+ * Fire-and-forget POST of session summary to xray.
+ * Only called once per session (not in hot path), so allows longer timeout.
+ */
+export async function postSummaryToXray(
+  summary: Record<string, unknown>,
+  opts: PostToXrayOptions = {},
+): Promise<boolean> {
+  const xrayUrl = opts.xrayUrl ?? resolveXrayUrl()
+  if (!xrayUrl) return false
+  const fetchFn = opts.fetchImpl ?? fetch
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), opts.timeoutMs ?? SUMMARY_TIMEOUT_MS)
+  try {
+    await fetchFn(`${xrayUrl}/hooks/token-optimizer/summary`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({
+        source: 'token-optimizer-mcp',
+        version: VERSION,
+        summary,
       }),
       signal: controller.signal,
     })
@@ -64,7 +99,7 @@ export async function getSessionTokens(
   sessionId: string,
   opts: GetSessionTokensOptions = {},
 ): Promise<ContextMeasurement | null> {
-  const xrayUrl = opts.xrayUrl ?? process.env.XRAY_URL
+  const xrayUrl = opts.xrayUrl ?? resolveXrayUrl()
   if (!xrayUrl) return null
   const fetchFn = opts.fetchImpl ?? fetch
   const controller = new AbortController()

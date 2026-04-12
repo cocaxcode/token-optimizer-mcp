@@ -58,9 +58,13 @@ describe('stats service', () => {
     ])
     const cost = getCostReport(db, 7)
     expect(cost.total_tokens).toBe(1_000_000)
-    // Sonnet: 3/MTok, Opus: 15/MTok
-    expect(cost.estimated_cost_usd_min).toBe(3)
-    expect(cost.estimated_cost_usd_max).toBe(15)
+    // Haiku: $1/MTok, Sonnet: $3/MTok, Opus: $5/MTok (input pricing April 2026)
+    expect(cost.estimated_cost_usd_haiku).toBe(1)
+    expect(cost.estimated_cost_usd_sonnet).toBe(3)
+    expect(cost.estimated_cost_usd_opus).toBe(5)
+    // Deprecated aliases
+    expect(cost.estimated_cost_usd_min).toBe(1)
+    expect(cost.estimated_cost_usd_max).toBe(5)
     expect(cost.disclaimer).toContain('factura Anthropic')
   })
 

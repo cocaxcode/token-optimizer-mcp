@@ -1,6 +1,11 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { postToXray, getSessionTokens } from '../services/xray-client.js'
 
+// Mock resolveXrayUrl to avoid reading real ~/.token-optimizer/config.json
+vi.mock('../cli/config.js', () => ({
+  resolveXrayUrl: () => process.env.XRAY_URL ?? null,
+}))
+
 describe('postToXray', () => {
   beforeEach(() => {
     delete process.env.XRAY_URL
