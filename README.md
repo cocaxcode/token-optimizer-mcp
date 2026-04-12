@@ -12,7 +12,7 @@
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D20-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node" />
   <img src="https://img.shields.io/badge/tools-13-blueviolet?style=flat-square" alt="13 tools" />
-  <img src="https://img.shields.io/badge/tests-238-brightgreen?style=flat-square" alt="238 tests" />
+  <img src="https://img.shields.io/badge/tests-253-brightgreen?style=flat-square" alt="238 tests" />
 </p>
 
 <p align="center">
@@ -278,29 +278,124 @@ Resumen: Medido: 45,230 tokens · Estimado: 12,100 tokens
 
 ---
 
-## About Recommended Tools
+## Complementary Tools: serena + RTK
 
-token-optimizer-mcp **does not install anything automatically**. `doctor` detects and suggests — the user decides.
+token-optimizer-mcp **does not install anything automatically**. `doctor` detects and suggests — the user decides. These two tools work alongside token-optimizer to reduce token consumption at different levels.
 
-### serena-mcp
+### serena-mcp — symbolic file reads
 
-Symbolic file reads via LSP. Reads only the symbols you need instead of the entire file. Saves 20-30% on large files.
+Instead of reading entire files (500+ lines), serena uses **LSP** to read only the symbols (classes, functions, methods) you actually need. Saves **20-30%** on large file reads.
+
+**Step 1 — Install serena as MCP server:**
 
 ```bash
-uvx --from git+https://github.com/oraios/serena serena start-mcp-server
+# Claude Code
+claude mcp add --scope user serena -- serena start-mcp-server --context=claude-code --project-from-cwd
+
+# Or manually in ~/.claude.json → mcpServers:
+{
+  "serena": {
+    "type": "stdio",
+    "command": "serena",
+    "args": ["start-mcp-server", "--context=claude-code", "--project-from-cwd"]
+  }
+}
 ```
+
+> Requires `serena` installed: `pip install serena` or `pipx install serena` or `uvx --from git+https://github.com/oraios/serena serena start-mcp-server`
+
+**Step 2 — Register your project (required per-project):**
+
+Serena needs to know which projects to index. The first time you use serena in a project:
+
+```
+> "Activate this project in serena"
+→ Claude calls mcp__serena__activate_project with the project path
+→ Serena indexes the codebase via LSP
+```
+
+Or create `.serena/project.yml` in the project root for auto-detection:
+
+```yaml
+# .serena/project.yml — minimal config
+name: my-project
+```
+
+Without a registered project, serena returns "No active project" and cannot do symbolic reads.
+
+**Step 3 — Verify with token-optimizer:**
+
+```bash
+npx @cocaxcode/token-optimizer-mcp doctor
+```
+
+Expected output when fully configured:
+
+```
+[serena]  ✓ conf=0.40  signals: claude-json-registered, project-registered-for-cwd
+```
+
+If you see `✓` but no `project-registered-for-cwd`, serena is installed but the current project is not registered.
+
+**How token-optimizer integrates**: the `optimization_status` tool and `doctor` CLI detect serena presence across 5 signals (global settings, ~/.claude.json, project settings, local settings, project registration). The coach `detect-huge-file-reads` rule fires when a Read exceeds 50k tokens and suggests using serena instead.
 
 **Security note**: serena includes `execute_shell_command` among its tools. Review the configuration before enabling.
 
-### RTK
+---
 
-Filters noisy Bash output (builds, tests) before it reaches Claude Code. Saves 15-25% on build/test cycles.
+### RTK — Bash output filtering
+
+RTK is a Rust CLI that **filters and compresses command output** before it reaches Claude Code. Instead of 500 lines of build output, RTK returns only errors, failures, or a compact summary. Saves **15-25%** on build/test cycles.
+
+**Step 1 — Install RTK binary:**
 
 ```bash
+# macOS
 brew install standard-input/tap/rtk
+
+# Windows — download signed binary from GitHub releases:
+# https://github.com/standard-input/rtk/releases
+# Place rtk.exe somewhere in your PATH (e.g., C:\tools\rtk\)
+
+# Verify
+rtk --version
 ```
 
-**Security note**: RTK publishes GPG-signed releases. Compiled in Rust.
+**Step 2 — token-optimizer bridge (automatic):**
+
+If you installed token-optimizer with `claude mcp add` or `npx @cocaxcode/token-optimizer-mcp install`, the **PreToolUse hook** already acts as an RTK bridge:
+
+1. Claude wants to run `git status`
+2. The hook calls `rtk rewrite "git status"`
+3. RTK returns `rtk git status` (exit 0 = auto-allow)
+4. The hook sets `updatedInput` so Claude runs the RTK-wrapped version
+5. Output is filtered before it enters the context window
+
+This happens **automatically** for every Bash command — no manual `rtk` invocation needed.
+
+RTK exit codes:
+- **0** — rewrite + auto-allow (e.g., `git status` → `rtk git status`)
+- **1** — no RTK equivalent → passthrough (command runs as-is)
+- **2** — deny rule → passthrough
+- **3** — rewrite + ask user for permission (e.g., `ls -la` → `rtk ls -la`, but prompts first)
+
+**Step 3 — Verify with token-optimizer:**
+
+```bash
+npx @cocaxcode/token-optimizer-mcp doctor
+```
+
+Expected output when fully configured:
+
+```
+[rtk]  ✓ conf=0.40  signals: rtk-binary-in-path, token-optimizer-bridge-active
+```
+
+If you see `rtk-binary-in-path` but no `token-optimizer-bridge-active`, RTK is installed but the token-optimizer hooks are not — run `npx @cocaxcode/token-optimizer-mcp install` to set them up.
+
+**What RTK can wrap** (partial list): `ls`, `tree`, `git`, `gh`, `test`, `err`, `json`, `diff`, `grep`, `docker`, `kubectl`, `pnpm`, `dotnet`, `psql`, `aws`, and more. Run `rtk --help` for the full list.
+
+**Security note**: RTK publishes GPG-signed releases. Compiled in Rust. Open source at [github.com/standard-input/rtk](https://github.com/standard-input/rtk).
 
 ---
 
@@ -439,7 +534,7 @@ src/
 
 **Stack**: TypeScript 5 strict ESM &middot; `@modelcontextprotocol/sdk` ^1.27 &middot; `better-sqlite3` ^11 (WAL + FTS5) &middot; Zod 3.25 &middot; Vitest 3.2+ &middot; tsup &middot; Node >=20
 
-**238 tests** across 28 suites. All tools tested via `InMemoryTransport`.
+**253 tests** across 29 suites. All tools tested via `InMemoryTransport`.
 
 ---
 
