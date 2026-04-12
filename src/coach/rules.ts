@@ -145,14 +145,16 @@ export const DETECTION_RULES: readonly DetectionRule[] = [
     run(ctx) {
       if (!ctx.active_model || !/opus/i.test(ctx.active_model)) return null
       const recent = ctx.events.slice(0, 20)
-      if (recent.length < 10) return null
+      if (recent.length < 6) return null
       const edits = countMatching(recent, (e) => EDIT_TOOLS.has(e.tool_name))
-      if (edits > 0) return null
+      const bash = countMatching(recent, (e) => e.tool_name === 'Bash')
+      // Opus es correcto para planificar/preguntar — solo avisar cuando está ejecutando código
+      if (edits + bash < 6) return null
       return {
         rule_id: 'detect-opus-for-simple-task',
         tip_ids: ['default-to-sonnet', 'use-haiku-for-simple'],
         severity: 'info',
-        evidence: 'Opus activo sin ediciones en los ultimos 20 eventos',
+        evidence: `Opus ejecutando trabajo mecanico: ${edits} edits + ${bash} Bash en ultimos 20 eventos. Sonnet haria lo mismo un 80% mas barato.`,
         estimation_method: 'measured_exact',
       }
     },

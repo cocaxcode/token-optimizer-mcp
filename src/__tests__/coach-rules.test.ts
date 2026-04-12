@@ -184,25 +184,45 @@ describe('detect-many-bash-commands', () => {
 describe('detect-opus-for-simple-task', () => {
   const rule = DETECTION_RULES.find((r) => r.id === 'detect-opus-for-simple-task')!
 
-  it('fires on Opus model without edits', () => {
+  it('fires when Opus is doing heavy edit+bash work', () => {
+    const events = [
+      ...makeEvents(4, 'Edit'),
+      ...makeEvents(3, 'Bash'),
+    ]
+    const hit = rule.run(buildCtx({ active_model: 'claude-opus-4-6', events }))
+    expect(hit).not.toBeNull()
+    expect(hit?.evidence).toContain('Opus ejecutando trabajo mecanico')
+    expect(hit?.tip_ids).toContain('default-to-sonnet')
+  })
+
+  it('does not fire when Opus is used for Q&A (no edits, no bash)', () => {
     const hit = rule.run(
       buildCtx({
         active_model: 'claude-opus-4-6',
         events: makeEvents(10, 'Read'),
       }),
     )
-    expect(hit).not.toBeNull()
+    expect(hit).toBeNull()
+  })
+
+  it('does not fire below 6 edits+bash combined', () => {
+    const events = [
+      ...makeEvents(3, 'Edit'),
+      ...makeEvents(2, 'Bash'),
+    ]
+    const hit = rule.run(buildCtx({ active_model: 'claude-opus-4-6', events }))
+    expect(hit).toBeNull()
   })
 
   it('does not fire without active_model', () => {
-    const hit = rule.run(buildCtx({ events: makeEvents(10, 'Read') }))
+    const events = [...makeEvents(4, 'Edit'), ...makeEvents(3, 'Bash')]
+    const hit = rule.run(buildCtx({ events }))
     expect(hit).toBeNull()
   })
 
   it('does not fire on Sonnet', () => {
-    const hit = rule.run(
-      buildCtx({ active_model: 'claude-sonnet-4-6', events: makeEvents(10, 'Read') }),
-    )
+    const events = [...makeEvents(4, 'Edit'), ...makeEvents(3, 'Bash')]
+    const hit = rule.run(buildCtx({ active_model: 'claude-sonnet-4-6', events }))
     expect(hit).toBeNull()
   })
 })
