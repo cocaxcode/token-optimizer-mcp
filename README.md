@@ -114,19 +114,17 @@ You don't need to memorize tool names. Just say what you need.
 
 ### Claude Code (recommended)
 
-The fastest way — installs the MCP server + 3 hooks in one command:
-
 ```bash
-npx @cocaxcode/token-optimizer-mcp install
+claude mcp add --scope user token-optimizer -- npx -y @cocaxcode/token-optimizer-mcp@latest --mcp
 ```
 
-Then verify everything is working:
+Then verify:
 
 ```bash
 npx @cocaxcode/token-optimizer-mcp doctor
 ```
 
-This writes to `~/.claude/settings.json` (user-level). The hooks activate in all your projects. Per-project data (analytics DB) is stored in `{project}/.token-optimizer/` and auto-added to `.gitignore`.
+Per-project analytics data is stored in `{project}/.token-optimizer/` and auto-added to `.gitignore`.
 
 ### Claude Desktop
 
