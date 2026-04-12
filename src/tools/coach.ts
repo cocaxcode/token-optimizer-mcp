@@ -35,8 +35,10 @@ export function registerCoachTools(server: McpServer, db: DB): void {
         const contextOpts: {
           db: DB
           projectDir?: string
+          activeModel?: string
         } = { db }
         if (project_dir !== undefined) contextOpts.projectDir = project_dir
+        if (active_model !== undefined) contextOpts.activeModel = active_model
         const context = await measureContextSize(sessionId, contextOpts)
 
         const queries = buildQueries(db)

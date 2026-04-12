@@ -18,6 +18,7 @@ export interface ContextMeterOptions {
   projectDir?: string
   db?: DB
   fetchImpl?: typeof fetch
+  activeModel?: string
 }
 
 export async function measureContextSize(
@@ -35,11 +36,12 @@ export async function measureContextSize(
   if (xrayResult) return xrayResult
 
   // Strategy 3: cumulative estimate from our DB (estimated_cumulative)
+  const limit = resolveLimit(opts.activeModel)
   if (opts.db) {
-    return cumulativeEstimate(opts.db, sessionId)
+    return cumulativeEstimate(opts.db, sessionId, limit)
   }
 
-  return { tokens: 0, limit: DEFAULT_LIMIT, percent: 0, estimation_method: 'unknown' }
+  return { tokens: 0, limit, percent: 0, estimation_method: 'unknown' }
 }
 
 function readTranscript(projectDir: string, sessionId: string): ContextMeasurement | null {
@@ -91,14 +93,23 @@ async function tryXray(
   return getSessionTokens(sessionId, opts)
 }
 
-function cumulativeEstimate(db: DB, sessionId: string): ContextMeasurement {
+function resolveLimit(activeModel?: string): number {
+  if (activeModel && /1m|opus/i.test(activeModel)) return OPUS_1M_LIMIT
+  return DEFAULT_LIMIT
+}
+
+function cumulativeEstimate(
+  db: DB,
+  sessionId: string,
+  limit: number = DEFAULT_LIMIT,
+): ContextMeasurement {
   const queries = buildQueries(db)
   const sessionTokens = queries.sumTokensBySession(sessionId)
   const total = sessionTokens + BASELINE_TOKENS
   return {
     tokens: total,
-    limit: DEFAULT_LIMIT,
-    percent: total / DEFAULT_LIMIT,
+    limit,
+    percent: total / limit,
     estimation_method: 'estimated_cumulative',
   }
 }

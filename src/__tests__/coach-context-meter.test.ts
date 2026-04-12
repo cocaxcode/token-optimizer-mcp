@@ -63,6 +63,16 @@ describe('measureContextSize', () => {
     expect(result.estimation_method).toBe('estimated_cumulative')
   })
 
+  it('cumulative uses 1M limit when activeModel contains opus', async () => {
+    const db = getDb(':memory:')
+    seedAnalyticsDb(db, [
+      makeEvent({ session_id: 'sess-1', tokens_estimated: 1000 }),
+    ])
+    const result = await measureContextSize('sess-1', { db, activeModel: 'claude-opus-4-6[1m]' })
+    expect(result.limit).toBe(1_000_000)
+    expect(result.percent).toBeCloseTo(16_000 / 1_000_000)
+  })
+
   it('falls back when xray fetch throws (network error)', async () => {
     process.env.XRAY_URL = 'http://localhost:9999'
     const db = getDb(':memory:')
