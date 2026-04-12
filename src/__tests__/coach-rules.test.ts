@@ -258,3 +258,77 @@ describe('runRules orchestrator', () => {
     expect(Array.isArray(hits)).toBe(true)
   })
 })
+
+// ── detect-read-over-serena ──
+describe('detect-read-over-serena', () => {
+  const rule = DETECTION_RULES.find((r) => r.id === 'detect-read-over-serena')!
+
+  it('exists in the registry', () => {
+    expect(rule).toBeDefined()
+    expect(rule.tip_ids).toContain('prefer-serena-reads')
+  })
+
+  it('fires with 3+ Read calls >2k tokens', () => {
+    const hit = rule.run(
+      buildCtx({
+        events: makeEvents(3, 'Read', { tokens_estimated: 3_000 }),
+      }),
+    )
+    expect(hit).not.toBeNull()
+    expect(hit!.rule_id).toBe('detect-read-over-serena')
+    expect(hit!.tip_ids).toContain('prefer-serena-reads')
+    expect(hit!.severity).toBe('info')
+    expect(hit!.evidence).toContain('3 lecturas Read')
+    expect(hit!.evidence).toContain('9000')
+    expect(hit!.evidence).toContain('6300') // 70% of 9000
+  })
+
+  it('does not fire with <3 Read calls', () => {
+    const hit = rule.run(
+      buildCtx({
+        events: makeEvents(2, 'Read', { tokens_estimated: 5_000 }),
+      }),
+    )
+    expect(hit).toBeNull()
+  })
+
+  it('does not fire if tokens <=2k', () => {
+    const hit = rule.run(
+      buildCtx({
+        events: makeEvents(5, 'Read', { tokens_estimated: 500 }),
+      }),
+    )
+    expect(hit).toBeNull()
+  })
+
+  it('returns warn severity with 6+ reads', () => {
+    const hit = rule.run(
+      buildCtx({
+        events: makeEvents(6, 'Read', { tokens_estimated: 4_000 }),
+      }),
+    )
+    expect(hit).not.toBeNull()
+    expect(hit!.severity).toBe('warn')
+  })
+
+  it('does not count non-Read tools', () => {
+    const events = [
+      ...makeEvents(2, 'Read', { tokens_estimated: 3_000 }),
+      ...makeEvents(5, 'Grep', { tokens_estimated: 5_000 }),
+      ...makeEvents(3, 'Edit', { tokens_estimated: 4_000 }),
+    ]
+    const hit = rule.run(buildCtx({ events }))
+    expect(hit).toBeNull() // only 2 Read calls, below threshold
+  })
+
+  it('propagates estimation_method from context', () => {
+    const hit = rule.run(
+      buildCtx({
+        events: makeEvents(3, 'Read', { tokens_estimated: 3_000 }),
+        session_token_method: 'estimated_cumulative',
+      }),
+    )
+    expect(hit).not.toBeNull()
+    expect(hit!.estimation_method).toBe('estimated_cumulative')
+  })
+})

@@ -197,4 +197,27 @@ export const DETECTION_RULES: readonly DetectionRule[] = [
       return null
     },
   },
+
+  // 12. detect-read-over-serena
+  {
+    id: 'detect-read-over-serena',
+    tip_ids: ['prefer-serena-reads'],
+    run(ctx) {
+      const window = ctx.events.slice(0, 30)
+      const largeReads = window.filter(
+        (e) => e.tool_name === 'Read' && e.tokens_estimated > 2_000,
+      )
+      if (largeReads.length < 3) return null
+      const totalTokens = largeReads.reduce((sum, e) => sum + e.tokens_estimated, 0)
+      const estimatedSaving = Math.round(totalTokens * 0.7)
+      const severity: DetectionSeverity = largeReads.length >= 6 ? 'warn' : 'info'
+      return {
+        rule_id: 'detect-read-over-serena',
+        tip_ids: ['prefer-serena-reads'],
+        severity,
+        evidence: `${largeReads.length} lecturas Read >2k tokens (total: ${totalTokens}). Serena ahorraria ~${estimatedSaving} tokens (~70%).`,
+        estimation_method: ctx.session_token_method,
+      }
+    },
+  },
 ]

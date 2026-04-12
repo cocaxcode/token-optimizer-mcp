@@ -173,6 +173,19 @@ export const KNOWLEDGE_BASE: readonly CoachTip[] = [
     detector_id: 'detect-huge-file-reads',
   },
   {
+    id: 'prefer-serena-reads',
+    title: 'Usa Serena en vez de Read para archivos de codigo',
+    description:
+      'Serena lee simbolos (funciones, clases) sin cargar el archivo completo. Usa get_symbols_overview para explorar y find_symbol con include_body para leer solo lo que necesitas. Ahorro tipico: 60-90% vs Read.',
+    savings_estimate: '60-90% en lecturas de codigo',
+    savings_source: 'internal',
+    how_to_invoke: 'get_symbols_overview(path) → find_symbol(name, include_body=true)',
+    when_applicable: 'Archivos .ts/.js/.py/.java >50 lineas donde solo necesitas 1-2 funciones',
+    source_type: 'mcp',
+    verified_at: '2026-04-12',
+    detector_id: 'detect-read-over-serena',
+  },
+  {
     id: 'install-rtk',
     title: 'Instala RTK para filtrar salida ruidosa de Bash',
     description:
