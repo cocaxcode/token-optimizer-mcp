@@ -85,7 +85,7 @@ src/
 - **Tool API**: `.tool(name, description, schema, handler)` with raw Zod shapes
 - **Error handling**: tool handlers never throw — return `{ isError: true, content: [...] }`
 - **Logging**: ONLY `console.error()` — stdout is reserved for JSON-RPC / hook output
-- **Hooks**: PostToolUse NEVER sets `updatedMCPToolOutput`; PreToolUse NEVER sets `updatedInput` (per anthropics/claude-code#36843 — hooks cannot modify built-in tool I/O)
+- **Hooks**: PostToolUse NEVER sets `updatedMCPToolOutput` (per anthropics/claude-code#36843). PreToolUse sets `updatedInput` ONLY for RTK rewrite (exit 0/3); budget block always wins over RTK rewrite.
 - **Storage split**: global in `~/.token-optimizer/`, per-project in `{projectDir}/.token-optimizer/` (auto-gitignored)
 - **Confirm pattern**: destructive tools (`mcp_prune_apply`, `mcp_prune_rollback`) require `confirm: true`
 - **Measurement honesty**: every `tool_calls` row carries an `estimation_method` column; reports always split "Medido vs Estimado"

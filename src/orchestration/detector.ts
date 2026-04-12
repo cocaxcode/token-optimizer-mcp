@@ -93,6 +93,20 @@ export function probeSerena(paths: DetectorPaths = {}): DetectionResult {
       const keys = mcpServerKeys(readSettings(localSettings(cwd)))
       return [keys.some((k) => k.toLowerCase().includes('serena')), 'local-mcp-registered']
     },
+    () => {
+      // Check if current CWD is registered as a serena project
+      const configPath = path.join(home, '.serena', 'serena_config.yml')
+      if (!fs.existsSync(configPath)) return [false, 'project-registered-for-cwd']
+      try {
+        const content = fs.readFileSync(configPath, 'utf8')
+        const normalizedCwd = cwd.replace(/\\/g, '/').toLowerCase()
+        // Simple check: does the config mention a path matching our CWD?
+        const normalizedContent = content.replace(/\\/g, '/').toLowerCase()
+        return [normalizedContent.includes(normalizedCwd), 'project-registered-for-cwd']
+      } catch {
+        return [false, 'project-registered-for-cwd']
+      }
+    },
   ])
 }
 
@@ -129,6 +143,15 @@ export function probeRtk(paths: DetectorPaths = {}): DetectionResult {
       if (!hooks || typeof hooks !== 'object') return [false, 'rtk-hook-registered']
       const serialized = JSON.stringify(hooks)
       return [serialized.toLowerCase().includes('rtk'), 'rtk-hook-registered']
+    },
+    () => {
+      // Check if token-optimizer PreToolUse hook is installed (acts as RTK bridge)
+      const json = readSettings(globalSettings(home))
+      const hooks = json?.hooks
+      if (!hooks || typeof hooks !== 'object') return [false, 'token-optimizer-bridge-active']
+      const serialized = JSON.stringify(hooks)
+      const hasPreToolUse = serialized.includes('token-optimizer') && serialized.includes('pretooluse')
+      return [hasPreToolUse, 'token-optimizer-bridge-active']
     },
   ])
 }

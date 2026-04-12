@@ -367,7 +367,7 @@ brew install standard-input/tap/rtk
 
 | Hook | Matcher | What it does |
 |---|---|---|
-| `PreToolUse` | `Bash` | Checks budget: passthrough / warn / block. **Never sets `updatedInput`** — coexists with RTK. |
+| `PreToolUse` | `Bash` | Checks budget (passthrough / warn / block), then RTK rewrite. Sets `updatedInput` only when RTK rewrites (exit 0/3). Budget block wins over RTK. |
 | `PostToolUse` | `*` | Async analytics to SQLite. Fire-and-forget to xray. Target p95: 10ms. |
 | `SessionStart` | `compact` | Injects markdown: recent files, commands, budget. Token-capped at 2000. |
 

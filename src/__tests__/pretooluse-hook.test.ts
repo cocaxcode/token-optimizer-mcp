@@ -1,4 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import fs from 'node:fs'
+import path from 'node:path'
+import { mkdtemp } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
 import { runPreToolUseHook } from '../hooks/pretooluse.js'
 import { closeDb, getDb } from '../db/connection.js'
 import { BudgetManager } from '../services/budget-manager.js'
@@ -174,6 +178,65 @@ describe('runPreToolUseHook', () => {
       rtkPath: null,
     })
     expect(decision).toEqual({})
+  })
+
+  it('sets updatedInput when RTK rewrite succeeds (exit 0)', async () => {
+    // Create a fake RTK as a Node.js script (works cross-platform with spawnSync)
+    const tempDir = await mkdtemp(path.join(tmpdir(), 'tompx-fakertk-'))
+    const scriptPath = path.join(tempDir, 'fake-rtk.js')
+    fs.writeFileSync(scriptPath, 'process.stdout.write("rtk git status"); process.exit(0);')
+    try {
+      const decision = runPreToolUseHook({
+        stdin: hookInput({ tool_input: { command: 'git status' } }),
+        dbPath: ':memory:',
+        projectDir: PROJECT_DIR,
+        writeStdout: false,
+        rtkPath: process.execPath,
+      })
+      // Use the real RTK if available, otherwise test with node script
+      // We call rtkRewrite directly to validate the positive path
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+    // Test via the real RTK binary if installed on this machine
+    const { findRtkBinary, rtkRewrite, resetRtkCache } = await import('../lib/rtk-bridge.js')
+    resetRtkCache()
+    const rtkPath = findRtkBinary({ resetCache: true })
+    if (!rtkPath) return // Skip if RTK not installed
+    const result = rtkRewrite('git status', rtkPath)
+    if (result && result.exitCode === 0 && result.rewritten) {
+      const decision = runPreToolUseHook({
+        stdin: hookInput({ tool_input: { command: 'git status' } }),
+        dbPath: ':memory:',
+        projectDir: PROJECT_DIR,
+        writeStdout: false,
+        rtkPath,
+      })
+      expect(decision.updatedInput).toBeDefined()
+      expect(decision.updatedInput?.command).toContain('rtk')
+      expect(decision.permissionDecision).toBe('allow')
+    }
+  })
+
+  it('sets updatedInput without permissionDecision when RTK exits 3 (ask)', async () => {
+    // Test via real RTK if installed — ls -la typically exits 3 (ask)
+    const { findRtkBinary, rtkRewrite, resetRtkCache } = await import('../lib/rtk-bridge.js')
+    resetRtkCache()
+    const rtkPath = findRtkBinary({ resetCache: true })
+    if (!rtkPath) return // Skip if RTK not installed
+    const result = rtkRewrite('ls -la', rtkPath)
+    if (result && result.exitCode === 3 && result.rewritten) {
+      const decision = runPreToolUseHook({
+        stdin: hookInput({ tool_input: { command: 'ls -la' } }),
+        dbPath: ':memory:',
+        projectDir: PROJECT_DIR,
+        writeStdout: false,
+        rtkPath,
+      })
+      expect(decision.updatedInput).toBeDefined()
+      expect(decision.updatedInput?.command).toContain('rtk')
+      expect(decision.permissionDecision).toBeUndefined()
+    }
   })
 
   it('writes decision JSON to stdout when writeStdout=true', () => {

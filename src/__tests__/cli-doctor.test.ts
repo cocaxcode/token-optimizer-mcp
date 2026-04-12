@@ -56,7 +56,7 @@ describe('runDoctor', () => {
     }
   })
 
-  it('omits serena suggestion when serena is detected', () => {
+  it('omits serena install suggestion when serena is detected', () => {
     fs.mkdirSync(path.join(home, '.claude'), { recursive: true })
     fs.writeFileSync(
       path.join(home, '.claude', 'settings.json'),
@@ -64,11 +64,36 @@ describe('runDoctor', () => {
     )
     runDoctor([], { home, cwd, print })
     const output = captured.join('\n')
-    // The serena signal line exists but the suggestion should NOT list serena under Sugerencias
+    // Should NOT suggest installing serena (it's already present)
     const sugIndex = output.indexOf('Sugerencias')
     if (sugIndex >= 0) {
       const sugSection = output.slice(sugIndex)
       expect(sugSection).not.toContain('[serena] Para lecturas simbolicas')
+      // Should suggest registering the project instead
+      expect(sugSection).toContain('[serena] Serena esta instalada pero este proyecto no esta registrado')
+    }
+  })
+
+  it('omits serena registration suggestion when project is registered', () => {
+    // Register serena MCP AND register the CWD in serena_config.yml
+    fs.mkdirSync(path.join(home, '.claude'), { recursive: true })
+    fs.writeFileSync(
+      path.join(home, '.claude', 'settings.json'),
+      JSON.stringify({ mcpServers: { 'serena-mcp': {} } }),
+    )
+    const normalizedCwd = cwd.replace(/\\/g, '/')
+    fs.mkdirSync(path.join(home, '.serena'), { recursive: true })
+    fs.writeFileSync(
+      path.join(home, '.serena', 'serena_config.yml'),
+      `projects:\n  - path: "${normalizedCwd}"\n`,
+    )
+    runDoctor([], { home, cwd, print })
+    const output = captured.join('\n')
+    const sugIndex = output.indexOf('Sugerencias')
+    if (sugIndex >= 0) {
+      const sugSection = output.slice(sugIndex)
+      // Neither install nor registration suggestions for serena
+      expect(sugSection).not.toContain('[serena]')
     }
   })
 })

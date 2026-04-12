@@ -66,7 +66,7 @@ describe('probeSerena', () => {
     expect(result.signals).toContain('local-mcp-registered')
   })
 
-  it('confidence scales with number of signals (4 checks total)', () => {
+  it('confidence scales with number of signals (5 checks total)', () => {
     writeJson(path.join(home, '.claude', 'settings.json'), {
       mcpServers: { serena: {} },
     })
@@ -74,8 +74,21 @@ describe('probeSerena', () => {
       mcpServers: { serena: {} },
     })
     const result = probeSerena({ home, cwd })
-    // 2 hits out of 4 total checks
-    expect(result.confidence).toBeCloseTo(2 / 4, 2)
+    // 2 hits out of 5 total checks
+    expect(result.confidence).toBeCloseTo(2 / 5, 2)
+  })
+
+  it('detects project registered in serena_config.yml', () => {
+    const normalizedCwd = cwd.replace(/\\/g, '/')
+    const configDir = path.join(home, '.serena')
+    fs.mkdirSync(configDir, { recursive: true })
+    fs.writeFileSync(
+      path.join(configDir, 'serena_config.yml'),
+      `projects:\n  - path: "${normalizedCwd}"\n`,
+    )
+    const result = probeSerena({ home, cwd })
+    expect(result.present).toBe(true)
+    expect(result.signals).toContain('project-registered-for-cwd')
   })
 })
 
@@ -133,6 +146,17 @@ describe('probeRtk', () => {
     const result = probeRtk({ home, cwd })
     expect(result.present).toBe(true)
     expect(result.signals).toContain('rtk-hook-registered')
+  })
+
+  it('detects token-optimizer bridge as RTK proxy', () => {
+    writeJson(path.join(home, '.claude', 'settings.json'), {
+      hooks: {
+        PreToolUse: [{ matcher: 'Bash', hooks: [{ command: 'npx @cocaxcode/token-optimizer-mcp --hook pretooluse' }] }],
+      },
+    })
+    const result = probeRtk({ home, cwd })
+    expect(result.present).toBe(true)
+    expect(result.signals).toContain('token-optimizer-bridge-active')
   })
 })
 
