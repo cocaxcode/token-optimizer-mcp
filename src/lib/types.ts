@@ -26,19 +26,16 @@ export interface ToolEvent {
   session_id: string
   tool_name: string
   source: EventSource
-  input_hash: string
-  tool_input_summary: string | null
   output_bytes: number
   tokens_estimated: number
   tokens_actual: number | null
   duration_ms: number | null
-  content: string | null
   estimation_method: EstimationMethod
   created_at: string
 }
 
 export type BudgetScope = 'session' | 'project'
-export type BudgetMode = 'warn' | 'block'
+export type BudgetMode = 'warn'
 
 export interface Budget {
   id: number

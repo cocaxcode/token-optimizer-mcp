@@ -47,13 +47,10 @@ describe('runSessionStartHook', () => {
       makeEvent({
         session_id: 'sess-1',
         tool_name: 'Read',
-        tool_input_summary: JSON.stringify({ path: '/foo.ts' }),
       }),
       makeEvent({
         session_id: 'sess-1',
         tool_name: 'Bash',
-        tool_input_summary: JSON.stringify({ command: 'npm test' }),
-        input_hash: 'h2',
       }),
     ])
     const md = runSessionStartHook({
@@ -64,7 +61,6 @@ describe('runSessionStartHook', () => {
     })
     expect(md).toContain('## Presupuesto')
     expect(md).toContain('## Archivos recientes')
-    expect(md).toContain('/foo.ts')
   })
 
   it('handles malformed stdin gracefully', () => {

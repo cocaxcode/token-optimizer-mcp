@@ -8,19 +8,11 @@ import {
   projectHash,
 } from '../lib/paths.js'
 import { BudgetManager } from '../services/budget-manager.js'
-import type { BudgetScope, BudgetMode } from '../lib/types.js'
+import type { BudgetScope } from '../lib/types.js'
 
 export interface BudgetCliOptions {
   cwd?: string
   print?: (msg: string) => void
-}
-
-function extractMode(args: string[]): BudgetMode | undefined {
-  const flag = args.find((a) => a.startsWith('--mode='))
-  if (!flag) return undefined
-  const value = flag.split('=')[1]
-  if (value === 'warn' || value === 'block') return value
-  return undefined
 }
 
 export function runBudgetCli(args: string[] = [], opts: BudgetCliOptions = {}): number {
@@ -39,9 +31,8 @@ export function runBudgetCli(args: string[] = [], opts: BudgetCliOptions = {}): 
     const scope = args[1] as BudgetScope | undefined
     const limitRaw = args[2]
     const limit = limitRaw ? parseInt(limitRaw, 10) : NaN
-    const mode = extractMode(args)
     if ((scope !== 'session' && scope !== 'project') || !Number.isFinite(limit)) {
-      print('Uso: token-optimizer-mcp budget set <session|project> <limit_tokens> [--mode=warn|block]')
+      print('Uso: token-optimizer-mcp budget set <session|project> <limit_tokens>')
       return 1
     }
     const scopeKey = scope === 'session' ? 'default' : hash
@@ -50,7 +41,6 @@ export function runBudgetCli(args: string[] = [], opts: BudgetCliOptions = {}): 
         scope,
         scope_key: scopeKey,
         limit_tokens: limit,
-        mode,
       })
       print(
         `Presupuesto guardado: ${budget.scope}=${budget.scope_key} limit=${budget.limit_tokens} mode=${budget.mode}`,

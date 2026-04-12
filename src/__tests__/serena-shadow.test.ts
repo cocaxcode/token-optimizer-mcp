@@ -20,7 +20,7 @@ describe('shadowMeasureSerena', () => {
     const result = shadowMeasureSerena(
       {
         tool_name: 'mcp__serena__read_file',
-        tool_input_summary: JSON.stringify({ path: '/fake' }),
+        file_path: '/fake',
         tokens_estimated: 100,
       },
       false,
@@ -32,7 +32,7 @@ describe('shadowMeasureSerena', () => {
     const result = shadowMeasureSerena(
       {
         tool_name: 'mcp__serena__read_file',
-        tool_input_summary: null,
+        file_path: undefined,
         tokens_estimated: 100,
       },
       true,
@@ -44,7 +44,7 @@ describe('shadowMeasureSerena', () => {
     const result = shadowMeasureSerena(
       {
         tool_name: 'mcp__serena__read_file',
-        tool_input_summary: JSON.stringify({ path: path.join(tempDir, 'nonexistent.ts') }),
+        file_path: path.join(tempDir, 'nonexistent.ts'),
         tokens_estimated: 100,
       },
       true,
@@ -59,7 +59,7 @@ describe('shadowMeasureSerena', () => {
     const result = shadowMeasureSerena(
       {
         tool_name: 'mcp__serena__read_file',
-        tool_input_summary: JSON.stringify({ path: filePath }),
+        file_path: filePath,
         tokens_estimated: 50,
       },
       true,
@@ -77,7 +77,7 @@ describe('shadowMeasureSerena', () => {
     const result = shadowMeasureSerena(
       {
         tool_name: 'mcp__serena__read_file',
-        tool_input_summary: JSON.stringify({ file_path: filePath }),
+        file_path: filePath,
         tokens_estimated: 10_000,
       },
       true,
@@ -86,27 +86,18 @@ describe('shadowMeasureSerena', () => {
     expect(result!.delta_tokens).toBe(0)
   })
 
-  it('accepts both path and file_path keys', () => {
+  it('works with file_path field', () => {
     const filePath = path.join(tempDir, 'dual.ts')
     fs.writeFileSync(filePath, 'x'.repeat(200))
-    const byPath = shadowMeasureSerena(
+    const result = shadowMeasureSerena(
       {
         tool_name: 'serena',
-        tool_input_summary: JSON.stringify({ path: filePath }),
+        file_path: filePath,
         tokens_estimated: 10,
       },
       true,
     )
-    const byFilePath = shadowMeasureSerena(
-      {
-        tool_name: 'serena',
-        tool_input_summary: JSON.stringify({ file_path: filePath }),
-        tokens_estimated: 10,
-      },
-      true,
-    )
-    expect(byPath).not.toBeNull()
-    expect(byFilePath).not.toBeNull()
-    expect(byPath!.full_file_tokens).toBe(byFilePath!.full_file_tokens)
+    expect(result).not.toBeNull()
+    expect(result!.full_file_tokens).toBeGreaterThan(0)
   })
 })

@@ -47,10 +47,7 @@ export class BudgetManager {
     if (input.scope !== 'session' && input.scope !== 'project') {
       throw new Error(`scope invalido: ${String(input.scope)}`)
     }
-    const mode: BudgetMode = input.mode ?? 'warn'
-    if (mode !== 'warn' && mode !== 'block') {
-      throw new Error(`mode invalido: ${String(mode)}`)
-    }
+    const mode: BudgetMode = 'warn'
     this.queries.upsertBudget(input.scope, input.scope_key, input.limit_tokens, mode)
     const budget = this.queries.getBudgetByScope(input.scope, input.scope_key)
     if (!budget) {

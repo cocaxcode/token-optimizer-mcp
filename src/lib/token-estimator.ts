@@ -7,9 +7,10 @@ const DEFAULT_TIMEOUT_MS = 500
 const DEFAULT_MODEL = 'claude-sonnet-4-5'
 const CHARS_PER_TOKEN = 0.27
 
-export function estimateTokensFast(text: string | null | undefined): number {
-  if (!text) return 0
-  return Math.ceil(text.length * CHARS_PER_TOKEN)
+export function estimateTokensFast(input: string | number | null | undefined): number {
+  if (input == null) return 0
+  if (typeof input === 'number') return Math.ceil(input * CHARS_PER_TOKEN)
+  return Math.ceil(input.length * CHARS_PER_TOKEN)
 }
 
 export interface EstimateTokensActualOptions {

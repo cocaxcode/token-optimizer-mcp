@@ -57,13 +57,11 @@ describe('runReport', () => {
         source: 'serena',
         estimation_method: 'estimated_serena_shadow',
         tokens_estimated: 500,
-        input_hash: 'h2',
       }),
       makeEvent({
         source: 'rtk',
         estimation_method: 'estimated_rtk_db',
         tokens_estimated: 200,
-        input_hash: 'h3',
       }),
     ])
     closeDb()

@@ -26,9 +26,9 @@ export function buildQueries(db: DB) {
   // ── tool_calls ──
   const insertToolCall = db.prepare(
     `INSERT INTO tool_calls (
-      session_id, tool_name, source, input_hash, tool_input_summary, output_bytes,
-      tokens_estimated, tokens_actual, duration_ms, content, estimation_method, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      session_id, tool_name, source, output_bytes,
+      tokens_estimated, tokens_actual, duration_ms, estimation_method, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
 
   const getToolCallsSince = db.prepare(
@@ -70,13 +70,10 @@ export function buildQueries(db: DB) {
         e.session_id,
         e.tool_name,
         e.source,
-        e.input_hash,
-        e.tool_input_summary,
         e.output_bytes,
         e.tokens_estimated,
         e.tokens_actual,
         e.duration_ms,
-        e.content,
         e.estimation_method,
         e.created_at,
       )
@@ -130,13 +127,10 @@ export function buildQueries(db: DB) {
         event.session_id,
         event.tool_name,
         event.source,
-        event.input_hash,
-        event.tool_input_summary,
         event.output_bytes,
         event.tokens_estimated,
         event.tokens_actual,
         event.duration_ms,
-        event.content,
         event.estimation_method,
         event.created_at,
       )

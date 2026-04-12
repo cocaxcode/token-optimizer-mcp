@@ -24,7 +24,7 @@ describe('measureContextSize', () => {
     const db = getDb(':memory:')
     seedAnalyticsDb(db, [
       makeEvent({ session_id: 'sess-1', tokens_estimated: 1000 }),
-      makeEvent({ session_id: 'sess-1', tokens_estimated: 2000, input_hash: 'h2' }),
+      makeEvent({ session_id: 'sess-1', tokens_estimated: 2000 }),
     ])
     const result = await measureContextSize('sess-1', { db })
     expect(result.estimation_method).toBe('estimated_cumulative')

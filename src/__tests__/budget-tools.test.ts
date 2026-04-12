@@ -68,7 +68,7 @@ describe('budget MCP tools', () => {
         scope: 'session',
         scope_key: 'sess-1',
         limit_tokens: 1000,
-        mode: 'block',
+        mode: 'warn',
       },
     })
     const result = (await ctx.client.callTool({
@@ -78,7 +78,7 @@ describe('budget MCP tools', () => {
     expect(result.isError).toBeFalsy()
     expect(result.content[0].text).toContain('gastado:')
     expect(result.content[0].text).toContain('modo:')
-    expect(result.content[0].text).toContain('block')
+    expect(result.content[0].text).toContain('warn')
   })
 
   it('budget_report returns a shape even with no data', async () => {

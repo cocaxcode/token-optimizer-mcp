@@ -20,7 +20,6 @@ function makeEvents(count: number, tool: string, overrides: Partial<ToolEvent> =
   return Array.from({ length: count }, (_, i) =>
     makeEvent({
       tool_name: tool,
-      input_hash: `h${tool}-${i}`,
       ...overrides,
     }),
   )
@@ -107,7 +106,7 @@ describe('detect-long-reasoning-no-code', () => {
 
   it('does not fire when there is at least one edit', () => {
     const events = makeEvents(9, 'Read')
-    events.push(makeEvent({ tool_name: 'Edit', input_hash: 'edit1' }))
+    events.push(makeEvent({ tool_name: 'Edit' }))
     expect(rule.run(buildCtx({ events }))).toBeNull()
   })
 
@@ -123,9 +122,9 @@ describe('detect-repeated-searches', () => {
     const hit = rule.run(
       buildCtx({
         events: [
-          makeEvent({ tool_name: 'Grep', input_hash: 'g1' }),
-          makeEvent({ tool_name: 'Glob', input_hash: 'g2' }),
-          makeEvent({ tool_name: 'Grep', input_hash: 'g3' }),
+          makeEvent({ tool_name: 'Grep' }),
+          makeEvent({ tool_name: 'Glob' }),
+          makeEvent({ tool_name: 'Grep' }),
         ],
       }),
     )
@@ -136,8 +135,8 @@ describe('detect-repeated-searches', () => {
     const hit = rule.run(
       buildCtx({
         events: [
-          makeEvent({ tool_name: 'Grep', input_hash: 'g1' }),
-          makeEvent({ tool_name: 'Grep', input_hash: 'g2' }),
+          makeEvent({ tool_name: 'Grep' }),
+          makeEvent({ tool_name: 'Grep' }),
         ],
       }),
     )
@@ -232,10 +231,10 @@ describe('detect-clear-opportunity', () => {
 
   it('fires on low overlap between recent and prior windows', () => {
     const recent = Array.from({ length: 20 }, (_, i) =>
-      makeEvent({ tool_name: 'Read', input_hash: `r${i}` }),
+      makeEvent({ tool_name: 'Read' }),
     )
     const prior = Array.from({ length: 20 }, (_, i) =>
-      makeEvent({ tool_name: 'Bash', input_hash: `b${i}` }),
+      makeEvent({ tool_name: 'Bash' }),
     )
     const hit = rule.run(buildCtx({ events: [...recent, ...prior] }))
     expect(hit).not.toBeNull()
@@ -243,7 +242,7 @@ describe('detect-clear-opportunity', () => {
 
   it('does not fire with high overlap', () => {
     const allSame = Array.from({ length: 40 }, (_, i) =>
-      makeEvent({ tool_name: 'Read', input_hash: `r${i}` }),
+      makeEvent({ tool_name: 'Read' }),
     )
     expect(rule.run(buildCtx({ events: allSame }))).toBeNull()
   })

@@ -32,7 +32,7 @@ export function registerBudgetTools(server: McpServer, db: DB): void {
   // ── budget_set ──
   server.tool(
     'budget_set',
-    'Define o actualiza un presupuesto de tokens. Precedencia: session > project. Modo warn avisa al exceder; modo block bloquea comandos Bash.',
+    'Define o actualiza un presupuesto de tokens. Precedencia: session > project. Modo warn avisa al exceder.',
     {
       scope: z.enum(['session', 'project']).describe('Ambito del presupuesto'),
       scope_key: z.string().min(1).describe('Clave del scope (sessionId o projectHash)'),
@@ -42,11 +42,10 @@ export function registerBudgetTools(server: McpServer, db: DB): void {
         .positive()
         .max(10_000_000)
         .describe('Limite en tokens (1..10_000_000)'),
-      mode: z.enum(['warn', 'block']).optional().describe('Modo: warn (default) o block'),
     },
-    async ({ scope, scope_key, limit_tokens, mode }) => {
+    async ({ scope, scope_key, limit_tokens }) => {
       try {
-        const budget = manager.setBudget({ scope, scope_key, limit_tokens, mode })
+        const budget = manager.setBudget({ scope, scope_key, limit_tokens })
         return text(
           [
             'Presupuesto guardado:',

@@ -76,10 +76,10 @@ describe('BudgetManager', () => {
         scope: 'session',
         scope_key: 'sess-1',
         limit_tokens: 2000,
-        mode: 'block',
+        mode: 'warn',
       })
       expect(updated.limit_tokens).toBe(2000)
-      expect(updated.mode).toBe('block')
+      expect(updated.mode).toBe('warn')
     })
   })
 
@@ -131,7 +131,7 @@ describe('BudgetManager', () => {
       const db = getDb(':memory:')
       seedAnalyticsDb(db, [
         makeEvent({ session_id: 'sess-1', tokens_estimated: 100 }),
-        makeEvent({ session_id: 'sess-1', tokens_estimated: 150, input_hash: 'h2' }),
+        makeEvent({ session_id: 'sess-1', tokens_estimated: 150 }),
       ])
       const status = manager.checkBudget('sess-1', 'proj-hash-1')
       expect(status.spent).toBe(250)
@@ -177,8 +177,8 @@ describe('BudgetManager', () => {
       const db = getDb(':memory:')
       seedAnalyticsDb(db, [
         makeEvent({ session_id: 'sess-1', tool_name: 'Read', source: 'builtin', tokens_estimated: 100 }),
-        makeEvent({ session_id: 'sess-1', tool_name: 'Read', source: 'builtin', tokens_estimated: 50, input_hash: 'h2' }),
-        makeEvent({ session_id: 'sess-1', tool_name: 'Bash', source: 'builtin', tokens_estimated: 200, input_hash: 'h3' }),
+        makeEvent({ session_id: 'sess-1', tool_name: 'Read', source: 'builtin', tokens_estimated: 50 }),
+        makeEvent({ session_id: 'sess-1', tool_name: 'Bash', source: 'builtin', tokens_estimated: 200 }),
       ])
       const report = manager.getBudgetReport('1970-01-01')
       expect(report.by_tool.length).toBe(2)

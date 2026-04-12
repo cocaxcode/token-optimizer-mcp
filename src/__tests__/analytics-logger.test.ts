@@ -14,7 +14,6 @@ describe('classifySource', () => {
     expect(classifySource('coach_tips')).toBe('own')
     expect(classifySource('mcp_prune_apply')).toBe('own')
     expect(classifySource('toon_encode')).toBe('own')
-    expect(classifySource('session_search')).toBe('own')
   })
 
   it('tags built-in Claude Code tools', () => {
@@ -93,7 +92,7 @@ describe('AnalyticsQueue', () => {
     const q = new AnalyticsQueue(db)
     // MAX_QUEUE_SIZE = 1000
     for (let i = 0; i < 1050; i++) {
-      q.enqueue(makeEvent({ input_hash: `h${i}` }))
+      q.enqueue(makeEvent({ tool_name: `Tool${i}` }))
     }
     expect(q.size()).toBe(1000)
     expect(q.droppedEvents).toBe(50)
@@ -103,7 +102,7 @@ describe('AnalyticsQueue', () => {
     const db = getDb(':memory:')
     const q = new AnalyticsQueue(db)
     for (let i = 0; i < 20; i++) {
-      q.enqueue(makeEvent({ input_hash: `h${i}` }))
+      q.enqueue(makeEvent({ tool_name: `Tool${i}` }))
     }
     const flushed = q.flush()
     expect(flushed).toBe(20)
@@ -136,7 +135,7 @@ describe('AnalyticsQueue', () => {
     const db = getDb(':memory:')
     const q = new AnalyticsQueue(db)
     for (let i = 0; i < 1010; i++) {
-      q.enqueue(makeEvent({ input_hash: `h${i}` }))
+      q.enqueue(makeEvent({ tool_name: `Tool${i}` }))
     }
     const queries = buildQueries(db)
     const dropped = queries.getMeta('dropped_events')

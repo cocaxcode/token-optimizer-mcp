@@ -1,6 +1,7 @@
 // Serena shadow measurement — Phase 4.6
 // Opt-in: when enabled, compare the serena event output against the full file
 // size to estimate the token delta that symbolic-read saved.
+// Note: without tool_input_summary, shadow measurement requires explicit path.
 
 import fs from 'node:fs'
 import type { EstimationMethod } from '../lib/types.js'
@@ -10,8 +11,9 @@ const CHARS_PER_TOKEN = 0.27
 
 export interface ShadowCandidate {
   tool_name: string
-  tool_input_summary: string | null
   tokens_estimated: number
+  /** Explicit file path for measurement (required since tool_input_summary was removed) */
+  file_path?: string
 }
 
 export interface ShadowMeasurement {
@@ -19,17 +21,6 @@ export interface ShadowMeasurement {
   full_file_tokens: number
   output_tokens: number
   estimation_method: EstimationMethod
-}
-
-function parsePath(summary: string | null): string | null {
-  if (!summary) return null
-  try {
-    const parsed = JSON.parse(summary) as { path?: unknown; file_path?: unknown }
-    const raw = parsed.path ?? parsed.file_path
-    return typeof raw === 'string' ? raw : null
-  } catch {
-    return null
-  }
 }
 
 /**
@@ -42,10 +33,9 @@ export function shadowMeasureSerena(
   enabled: boolean,
 ): ShadowMeasurement | null {
   if (!enabled) return null
-  const rawPath = parsePath(event.tool_input_summary)
-  if (!rawPath) return null
+  if (!event.file_path) return null
   try {
-    const abs = normalizePath(rawPath)
+    const abs = normalizePath(event.file_path)
     const stat = fs.statSync(abs)
     if (!stat.isFile()) return null
     const fullFileTokens = Math.ceil(stat.size * CHARS_PER_TOKEN)

@@ -2,7 +2,6 @@
 // MUST NOT set updatedMCPToolOutput for built-in tools (anthropics/claude-code#36843)
 // Target p95 latency: ≤10ms on synthetic fixture
 
-import crypto from 'node:crypto'
 import fs from 'node:fs'
 import { getDb } from '../db/connection.js'
 import {
@@ -29,9 +28,6 @@ export interface PostToolUseInput {
   duration_ms?: number
 }
 
-const CONTENT_MAX = 4096
-const INPUT_SUMMARY_MAX = 512
-
 function readStdinSync(): string {
   try {
     return fs.readFileSync(0, 'utf8')
@@ -40,22 +36,13 @@ function readStdinSync(): string {
   }
 }
 
-function extractContent(response: unknown): string {
-  if (response == null) return ''
-  if (typeof response === 'string') return response
+function extractOutputBytes(response: unknown): number {
+  if (response == null) return 0
+  if (typeof response === 'string') return response.length
   try {
-    return JSON.stringify(response)
+    return JSON.stringify(response).length
   } catch {
-    return ''
-  }
-}
-
-function extractInputSummary(input: unknown): string | null {
-  if (input == null) return null
-  try {
-    return JSON.stringify(input).slice(0, INPUT_SUMMARY_MAX)
-  } catch {
-    return null
+    return 0
   }
 }
 
@@ -83,12 +70,7 @@ export function runPostToolUseHook(opts: RunPostToolUseOptions = {}): ToolEvent 
 
   const sessionId = parsed.session_id ?? 'unknown'
   const toolName = parsed.tool_name ?? 'unknown'
-  const content = extractContent(parsed.tool_response)
-  const inputHash = crypto
-    .createHash('sha256')
-    .update(JSON.stringify(parsed.tool_input ?? {}))
-    .digest('hex')
-    .slice(0, 16)
+  const outputBytes = extractOutputBytes(parsed.tool_response)
 
   const source = classifySource(toolName)
   const estimationMethod = tagEstimationMethod(source)
@@ -97,13 +79,10 @@ export function runPostToolUseHook(opts: RunPostToolUseOptions = {}): ToolEvent 
     session_id: sessionId,
     tool_name: toolName,
     source,
-    input_hash: inputHash,
-    tool_input_summary: extractInputSummary(parsed.tool_input),
-    output_bytes: content.length,
-    tokens_estimated: estimateTokensFast(content),
+    output_bytes: outputBytes,
+    tokens_estimated: estimateTokensFast(outputBytes),
     tokens_actual: null,
     duration_ms: parsed.duration_ms ?? Date.now() - start,
-    content: content.slice(0, CONTENT_MAX),
     estimation_method: estimationMethod,
     created_at: new Date().toISOString(),
   }

@@ -48,9 +48,9 @@ export function seedAnalyticsDb(db: Database.Database, events: ToolEvent[]): voi
   const insertSession = db.prepare(`INSERT OR IGNORE INTO sessions (id) VALUES (?)`)
   const insertEvent = db.prepare(
     `INSERT INTO tool_calls (
-      session_id, tool_name, source, input_hash, tool_input_summary, output_bytes,
-      tokens_estimated, tokens_actual, duration_ms, content, estimation_method, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      session_id, tool_name, source, output_bytes,
+      tokens_estimated, tokens_actual, duration_ms, estimation_method, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
   const seedMany = db.transaction((batch: ToolEvent[]) => {
     for (const e of batch) {
@@ -59,13 +59,10 @@ export function seedAnalyticsDb(db: Database.Database, events: ToolEvent[]): voi
         e.session_id,
         e.tool_name,
         e.source,
-        e.input_hash,
-        e.tool_input_summary,
         e.output_bytes,
         e.tokens_estimated,
         e.tokens_actual,
         e.duration_ms,
-        e.content,
         e.estimation_method,
         e.created_at,
       )
@@ -79,13 +76,10 @@ export function makeEvent(overrides: Partial<ToolEvent> = {}): ToolEvent {
     session_id: 'test-session',
     tool_name: 'Read',
     source: 'builtin',
-    input_hash: 'abc123',
-    tool_input_summary: null,
     output_bytes: 100,
     tokens_estimated: 27,
     tokens_actual: null,
     duration_ms: 5,
-    content: 'fixture',
     estimation_method: 'measured_exact',
     created_at: new Date().toISOString(),
     ...overrides,

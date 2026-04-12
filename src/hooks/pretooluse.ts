@@ -1,7 +1,6 @@
 // PreToolUse hook entry — Phase 2.6 + v0.2.0 RTK bridge
-// Acts on Bash tool: budget check first, then RTK rewrite if available.
+// Acts on Bash tool: budget warn check first, then RTK rewrite if available.
 // Sets updatedInput ONLY when RTK rewrites successfully (exit 0 or 3).
-// Budget block always wins over RTK rewrite.
 
 import fs from 'node:fs'
 import { getDb } from '../db/connection.js'
@@ -25,8 +24,6 @@ export interface PreToolUseInput {
 }
 
 export interface PreToolUseDecision {
-  decision?: 'block'
-  reason?: string
   additionalContext?: string
   updatedInput?: { command: string }
   permissionDecision?: string
@@ -96,19 +93,6 @@ export function runPreToolUseHook(
     if (status.active) {
       const wouldExceed = status.spent + estimatedCost > status.spent + status.remaining
       if (wouldExceed) {
-        if (status.mode === 'block') {
-          // Block wins — no RTK rewrite attempted
-          decision.decision = 'block'
-          decision.reason = `Presupuesto excedido (modo block): ${status.spent}+${estimatedCost} tokens > limite. Ejecuta budget_set para ajustar o /compact para liberar contexto.`
-          const active = manager.getActiveBudget(sessionId, projectHash(projectDir))
-          if (active) manager.recordBudgetEvent(active.id, 'block', estimatedCost)
-
-          if (opts.writeStdout !== false) {
-            process.stdout.write(JSON.stringify(decision))
-          }
-          return decision
-        }
-        // Warn mode — add context but continue to RTK
         decision.additionalContext = `⚠️ Presupuesto excedido: ${status.spent}+${estimatedCost} tokens > limite. Considera /compact o reducir alcance.`
         const active = manager.getActiveBudget(sessionId, projectHash(projectDir))
         if (active) manager.recordBudgetEvent(active.id, 'warn', estimatedCost)

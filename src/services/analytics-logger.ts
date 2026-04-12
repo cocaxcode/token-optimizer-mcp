@@ -13,7 +13,6 @@ const RETRY_BACKOFF_MS = 5
 
 const OWN_TOOL_PATTERNS = [
   /^budget_/,
-  /^session_search/,
   /^mcp_usage_stats/,
   /^mcp_cost_report/,
   /^optimization_status/,

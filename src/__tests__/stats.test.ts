@@ -36,13 +36,11 @@ describe('stats service', () => {
         tool_name: 'Bash',
         source: 'builtin',
         tokens_estimated: 200,
-        input_hash: 'h2',
       }),
       makeEvent({
         tool_name: 'mcp__serena__read',
         source: 'serena',
         tokens_estimated: 50,
-        input_hash: 'h3',
       }),
     ])
     const usage = getUsageStats(db, 7)
