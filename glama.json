@@ -1,0 +1,15 @@
+{
+  "$schema": "https://glama.ai/mcp/schemas/server.json",
+  "maintainers": ["cocaxcode"],
+  "name": "token-optimizer-mcp",
+  "description": "Orchestration + observability + coach layer for Claude Code token optimization. 13 MCP tools, 9 CLI subcommands, 3 hooks, measurement honesty (Medido vs Estimado), coach with 18 tips and 11 detection rules.",
+  "tags": [
+    "token-optimization",
+    "observability",
+    "budgets",
+    "orchestration",
+    "coach",
+    "claude-code",
+    "analytics"
+  ]
+}

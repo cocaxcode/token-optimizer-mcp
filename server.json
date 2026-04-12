@@ -1,0 +1,21 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.cocaxcode/token-optimizer-mcp",
+  "description": "Orchestration + observability + coach layer for Claude Code token optimization. 13 MCP tools (budget, session, orchestration, coach, toon), measurement honesty split, integration with serena/RTK/xray.",
+  "repository": {
+    "url": "https://github.com/cocaxcode/token-optimizer-mcp",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@cocaxcode/token-optimizer-mcp",
+      "version": "0.1.0",
+      "runtime": "node",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

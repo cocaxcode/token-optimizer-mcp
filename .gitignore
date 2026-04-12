@@ -1,0 +1,9 @@
+node_modules/
+dist/
+coverage/
+.token-optimizer/
+*.tgz
+.atl/
+.idea/
+.claude/
+.env

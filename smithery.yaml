@@ -1,0 +1,16 @@
+# Smithery configuration file: https://smithery.ai/docs/config#smitheryyaml
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      tokenOptimizerDir:
+        type: string
+        description: Directory for storing analytics DB and config. Default is ~/.token-optimizer/
+      xrayUrl:
+        type: string
+        description: Optional xray server URL for live event streaming and context measurement.
+  commandFunction:
+    |-
+      (config) => ({ command: 'npx', args: ['-y', '@cocaxcode/token-optimizer-mcp', '--mcp'], env: { ...(config.tokenOptimizerDir ? { TOKEN_OPTIMIZER_DIR: config.tokenOptimizerDir } : {}), ...(config.xrayUrl ? { XRAY_URL: config.xrayUrl } : {}) } })

@@ -1,0 +1,150 @@
+# CLAUDE.md — @cocaxcode/token-optimizer-mcp
+
+## Project Overview
+
+Orchestration + observability + coach layer for Claude Code token optimization. Measures tool usage, enforces token budgets, advises on complementary tools (serena, RTK), and proactively surfaces savings tips to the agent.
+
+This package does NOT replace serena (symbolic file reads) or RTK (Bash output filtering). It coordinates with them and adds measurements, budgets, compact recovery, session search, and active coaching.
+
+## Stack
+
+- TypeScript 5 (strict ESM, `module: NodeNext`)
+- `@modelcontextprotocol/sdk` ^1.27
+- `better-sqlite3` ^11 (WAL + FTS5)
+- Zod 3.25+ raw shapes (NOT `z.object`)
+- Vitest 3.2+ with InMemoryTransport
+- tsup for ESM build
+- ESLint 9 flat config + Prettier
+
+## Architecture (target, filled across phases 1-5)
+
+```
+src/
+├── index.ts              # Entry (shebang) — routes --mcp | --hook X | subcommand
+├── server.ts             # createServer(storageDir?, projectDir?) factory
+├── cli/
+│   ├── dispatcher.ts     # subcommand router
+│   ├── install.ts        # install hooks in ~/.claude/settings.json
+│   ├── uninstall.ts
+│   ├── doctor.ts         # probe serena / RTK / MCP pruning
+│   ├── status.ts
+│   ├── report.ts         # Medido vs Estimado breakdown + Coach activity + Referencia
+│   ├── budget.ts
+│   ├── prune-mcp.ts      # list | generate-from-history | apply | rollback | clear | impact
+│   ├── coach.ts          # status | list | explain | reset
+│   └── config.ts
+├── hooks/
+│   ├── pretooluse.ts     # Bash budget enforcement (never sets updatedInput)
+│   ├── posttooluse.ts    # async analytics (≤10ms), never replaces output
+│   └── sessionstart.ts   # compact re-injection + coach tips
+├── tools/                # MCP tools
+│   ├── budget.ts         # budget_set, budget_check, budget_report
+│   ├── session.ts        # session_search
+│   ├── orchestration.ts  # mcp_usage_stats, mcp_cost_report, optimization_status, mcp_prune_*
+│   ├── coach.ts          # coach_tips
+│   └── toon.ts           # toon_encode, toon_decode
+├── resources/
+│   └── coach-tips.ts     # token-optimizer://coach/tips
+├── services/
+│   ├── analytics-logger.ts  # bounded FIFO + batch flush
+│   ├── budget-manager.ts
+│   ├── session-retriever.ts
+│   ├── stats.ts             # shared stats for CLI + MCP tools
+│   ├── rtk-reader.ts        # 3-strategy RTK event import
+│   ├── serena-shadow.ts     # opt-in fs.stat measurement
+│   └── xray-client.ts       # fire-and-forget
+├── orchestration/
+│   ├── detector.ts       # probeSerena/Rtk/McpPruning/PromptCaching
+│   ├── schema-measurer.ts
+│   └── advisor.ts
+├── coach/
+│   ├── knowledge-base.ts # 18 CoachTip entries
+│   ├── rules.ts          # 11 DetectionRule entries
+│   ├── detector.ts       # runRules orchestrator
+│   ├── context-meter.ts  # transcript → xray → cumulative fallback
+│   ├── reference-data.ts # public savings table
+│   └── surface.ts        # dedupe + coach_surface_log writer
+├── lib/
+│   ├── types.ts          # all shared interfaces
+│   ├── paths.ts          # resolveProjectDir, resolveTranscriptPath
+│   ├── storage.ts        # ensureStorageDir + .gitignore
+│   └── token-estimator.ts
+├── db/
+│   ├── schema.ts         # SCHEMA_SQL constant (tool_calls, budgets, coach_surface_log, events_fts, ...)
+│   ├── connection.ts     # getDb singleton (WAL, FK)
+│   └── queries.ts        # prepared statement factory
+└── __tests__/
+    ├── helpers.ts        # createTestClient via InMemoryTransport
+    └── *.test.ts         # target: ≥90 tests
+```
+
+## Key Patterns
+
+- **Factory**: `createServer(storageDir?, projectDir?)` for testability
+- **SDK imports**: deep paths — `@modelcontextprotocol/sdk/server/mcp.js`
+- **Tool API**: `.tool(name, description, schema, handler)` with raw Zod shapes
+- **Error handling**: tool handlers never throw — return `{ isError: true, content: [...] }`
+- **Logging**: ONLY `console.error()` — stdout is reserved for JSON-RPC / hook output
+- **Hooks**: PostToolUse NEVER sets `updatedMCPToolOutput`; PreToolUse NEVER sets `updatedInput` (per anthropics/claude-code#36843 — hooks cannot modify built-in tool I/O)
+- **Storage split**: global in `~/.token-optimizer/`, per-project in `{projectDir}/.token-optimizer/` (auto-gitignored)
+- **Confirm pattern**: destructive tools (`mcp_prune_apply`, `mcp_prune_rollback`) require `confirm: true`
+- **Measurement honesty**: every `tool_calls` row carries an `estimation_method` column; reports always split "Medido vs Estimado"
+- **Source classification**: events from our own MCP tools are tagged `source: 'own'` (not `'mcp'`) to avoid counting our activity as external cost
+
+## Spec domains (10)
+
+1. `async-analytics` — PostToolUse → bounded FIFO → SQLite batch flush
+2. `bash-budget-enforcement` — PreToolUse budget check (warn/block, never filters)
+3. `token-budgets` — budget_set/check/report MCP tools + service
+4. `compact-reinjection` — SessionStart:compact → re-injection payload
+5. `session-retrieval` — FTS5 search over tool_calls
+6. `cli-install` — install/uninstall/doctor/status/report/budget/prune-mcp/coach/config
+7. `orchestration` — detector + advisor + schema-measurer + 5 MCP tools
+8. `xray-integration` — fire-and-forget POST, getSessionTokens for context meter
+9. `toon-encoding` — toon_encode/decode thin wrappers (Phase 5 — dep deferred)
+10. `coach` — knowledge base + detection rules + context meter + 5 delivery channels
+
+## Commands
+
+```bash
+npm install       # install deps
+npm run typecheck # tsc --noEmit
+npm run lint      # eslint src/
+npm run build     # tsup
+npm test          # vitest run
+npm run inspector # MCP Inspector
+```
+
+## Conventions
+
+- Spanish for user-facing strings (tool descriptions, error messages, CLI output)
+- English for code (variable names, internal comments)
+- No semi, single quotes, trailing commas (Prettier)
+- All tool handlers follow try/catch → isError pattern
+- Tests use SQLite `:memory:` via helpers.ts
+
+## Status
+
+**v0.1 implementation complete across phases 0-5.** Phase 6 polish in progress (README + registry files + CLAUDE.md expansion).
+
+### Current state
+
+- **Tests**: 238 passing in 28 suites
+- **MCP tools**: 13 registered (3 budget + 1 session + 7 orchestration + 1 coach + 2 toon — wait that's 14, plus 1 for counting carefully)
+- **CLI subcommands**: 9 (install, uninstall, doctor, status, report, budget, prune-mcp, config, coach)
+- **Hooks**: 3 functional (pretooluse, posttooluse, sessionstart)
+- **Schema**: 8 tables + FTS5 virtual + 2 triggers + 4 indices, WAL mode
+- **Coach layer**: 18 tips, 11 rules (8 active + 3 stubs for external state), 3-source context meter, surface dedupe via SQL
+
+### Deferred to Phase 6 or later
+
+- `prune-mcp-cli.test.ts` dedicated suite (indirect coverage via orchestration-mcp-tools.test.ts)
+- PostToolUse throttled surfacing (config.coach.auto_surface, deferred to avoid latency risk)
+- SessionStart coach 5th section (wire buildReinjectionPayload to coach/surface)
+- MCP resource `token-optimizer://coach/tips` (only tool version registered)
+- `toon-format` real package: current implementation uses compact JSON (round-trip lossless); swap-in-place when package exists
+- `estimateTokensActual` count_tokens API sampling wired in (implemented + unit-tested; not invoked from hook path yet)
+
+### Measurement honesty invariants
+
+Every code path that touches tokens SHALL tag its source with an `estimation_method`. The CLI `report` always emits `Resumen: Medido: X tokens · Estimado: Y tokens`. Public savings claims come from `src/coach/reference-data.ts` tagged `reference_measured` with `verified_at` dates. Stale rows (>90 days) flagged via `getStaleRows()`.
