@@ -5,11 +5,53 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
+import { spawnSync } from 'node:child_process'
 import { ensureStorageDir } from '../lib/storage.js'
 import { runDoctor } from './doctor.js'
 
 const SERVER_NAME = 'token-optimizer'
-const HOOK_COMMAND_BASE = 'npx @cocaxcode/token-optimizer-mcp'
+
+/**
+ * Resolve the hook command base.
+ * Prefer `node <global-path>/dist/index.js` for speed (~0.2s vs ~1.5s with npx).
+ * Falls back to `npx @cocaxcode/token-optimizer-mcp` if global path not found.
+ */
+function resolveHookCommandBase(): string {
+  try {
+    const globalRoot = path.join(os.homedir(), 'AppData', 'Roaming', 'npm', 'node_modules')
+    const indexPath = path.join(globalRoot, '@cocaxcode', 'token-optimizer-mcp', 'dist', 'index.js')
+    if (fs.existsSync(indexPath)) {
+      return `node "${indexPath.replace(/\\/g, '/')}"`
+    }
+  } catch { /* fallback */ }
+
+  // Unix global paths
+  const unixPaths = [
+    '/usr/local/lib/node_modules',
+    '/usr/lib/node_modules',
+    path.join(os.homedir(), '.npm-global', 'lib', 'node_modules'),
+  ]
+  for (const root of unixPaths) {
+    try {
+      const indexPath = path.join(root, '@cocaxcode', 'token-optimizer-mcp', 'dist', 'index.js')
+      if (fs.existsSync(indexPath)) {
+        return `node "${indexPath}"`
+      }
+    } catch { /* fallback */ }
+  }
+
+  // npm root -g fallback
+  try {
+    const result = spawnSync('npm', ['root', '-g'], { encoding: 'utf8', timeout: 3000, shell: true })
+    const npmRoot = (result.stdout ?? '').trim()
+    const indexPath = path.join(npmRoot, '@cocaxcode', 'token-optimizer-mcp', 'dist', 'index.js')
+    if (fs.existsSync(indexPath)) {
+      return `node "${indexPath.replace(/\\/g, '/')}"`
+    }
+  } catch { /* fallback */ }
+
+  return 'npx @cocaxcode/token-optimizer-mcp'
+}
 
 export interface InstallOptions {
   home?: string
@@ -87,11 +129,12 @@ export function runInstall(_args: string[] = [], opts: InstallOptions = {}): num
   }
   settings.mcpServers = mcpServers
 
-  // hooks upsert
+  // hooks upsert — prefer node direct for speed (~0.2s vs ~1.5s with npx)
+  const hookBase = resolveHookCommandBase()
   const hooks = (settings.hooks ?? {}) as Record<string, unknown>
-  upsertHook(hooks, 'PreToolUse', 'Bash', `${HOOK_COMMAND_BASE} --hook pretooluse`)
-  upsertHook(hooks, 'PostToolUse', '*', `${HOOK_COMMAND_BASE} --hook posttooluse`)
-  upsertHook(hooks, 'SessionStart', 'compact', `${HOOK_COMMAND_BASE} --hook sessionstart`)
+  upsertHook(hooks, 'PreToolUse', 'Bash', `${hookBase} --hook pretooluse`)
+  upsertHook(hooks, 'PostToolUse', '*', `${hookBase} --hook posttooluse`)
+  upsertHook(hooks, 'SessionStart', 'compact', `${hookBase} --hook sessionstart`)
   settings.hooks = hooks
 
   writeSettings(p, settings)
