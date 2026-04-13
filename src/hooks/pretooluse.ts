@@ -109,14 +109,12 @@ export function runPreToolUseHook(
     if (rtkPath && command.trim()) {
       const result = rtkRewrite(command, rtkPath)
       if (result) {
-        if (result.exitCode === 0 && result.rewritten) {
+        if ((result.exitCode === 0 || result.exitCode === 3) && result.rewritten) {
           // Exit 0: rewrite + auto-allow
+          // Exit 3: rewrite + ask — but Claude Code needs permissionDecision
+          //   to honor updatedInput, so we always set "allow"
           decision.updatedInput = { command: result.rewritten }
           decision.permissionDecision = 'allow'
-        } else if (result.exitCode === 3 && result.rewritten) {
-          // Exit 3: rewrite + ask user for permission
-          decision.updatedInput = { command: result.rewritten }
-          // No permissionDecision — Claude Code will prompt the user
         }
         // Exit 1 (no rewrite) or 2 (deny): passthrough, no updatedInput
       }

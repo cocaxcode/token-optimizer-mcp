@@ -393,11 +393,13 @@ This happens **automatically** for every Bash command — no manual `rtk` invoca
 
 > **Important**: After installing, **restart Claude Code**. Hooks are loaded at session start — if the package wasn't installed when the session started, hooks won't fire until the next session.
 
-RTK exit codes:
-- **0** — rewrite + auto-allow (e.g., `git status` → `rtk git status`)
+RTK exit codes (all handled by the bridge):
+- **0** — rewrite + auto-allow (e.g., `npm run build` → `rtk npm run build`)
 - **1** — no RTK equivalent → passthrough (command runs as-is)
 - **2** — deny rule → passthrough
-- **3** — rewrite + ask user for permission (e.g., `ls -la` → `rtk ls -la`, but prompts first)
+- **3** — rewrite + allow (e.g., `git status` → `rtk git status`, `find` → `rtk find`)
+
+> Both exit 0 and 3 set `permissionDecision: "allow"` so Claude Code applies the rewrite. Without this field, Claude Code ignores `updatedInput`.
 
 **Step 3 — Verify with token-optimizer:**
 
@@ -482,7 +484,7 @@ If you see `rtk-binary-in-path` but no `token-optimizer-bridge-active`, RTK is i
 
 | Hook | Matcher | What it does |
 |---|---|---|
-| `PreToolUse` | `Bash` | Checks budget (passthrough / warn / block), then RTK rewrite. Sets `updatedInput` only when RTK rewrites (exit 0/3). Budget block wins over RTK. |
+| `PreToolUse` | `Bash` | Checks budget (passthrough / warn), then RTK rewrite. Sets `updatedInput` + `permissionDecision: "allow"` when RTK rewrites (exit 0/3). Budget warn always wins over RTK. |
 | `PostToolUse` | `*` | Async analytics to SQLite. Fire-and-forget to xray. Target p95: 10ms. |
 | `SessionStart` | `compact` | Injects markdown: recent files, commands, budget. Token-capped at 2000. |
 

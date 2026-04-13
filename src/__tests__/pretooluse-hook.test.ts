@@ -174,7 +174,7 @@ describe('runPreToolUseHook', () => {
     }
   })
 
-  it('sets updatedInput without permissionDecision when RTK exits 3 (ask)', async () => {
+  it('sets updatedInput with permissionDecision allow when RTK exits 3 (ask)', async () => {
     // Test via real RTK if installed — ls -la typically exits 3 (ask)
     const { findRtkBinary, rtkRewrite, resetRtkCache } = await import('../lib/rtk-bridge.js')
     resetRtkCache()
@@ -191,7 +191,7 @@ describe('runPreToolUseHook', () => {
       })
       expect(decision.updatedInput).toBeDefined()
       expect(decision.updatedInput?.command).toContain('rtk')
-      expect(decision.permissionDecision).toBeUndefined()
+      expect(decision.permissionDecision).toBe('allow')
     }
   })
 
