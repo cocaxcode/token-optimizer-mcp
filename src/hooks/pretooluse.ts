@@ -29,6 +29,15 @@ export interface PreToolUseDecision {
   permissionDecision?: string
 }
 
+interface HookOutput {
+  hookSpecificOutput?: {
+    hookEventName: string
+    permissionDecision?: string
+    updatedInput?: { command: string }
+  }
+  additionalContext?: string
+}
+
 function readStdinSync(): string {
   try {
     return fs.readFileSync(0, 'utf8')
@@ -124,7 +133,21 @@ export function runPreToolUseHook(
   }
 
   if (opts.writeStdout !== false) {
-    process.stdout.write(JSON.stringify(decision))
+    // Claude Code expects hookSpecificOutput wrapper for PreToolUse
+    const output: HookOutput = {}
+    if (decision.updatedInput || decision.permissionDecision) {
+      output.hookSpecificOutput = {
+        hookEventName: 'PreToolUse',
+        ...(decision.permissionDecision && { permissionDecision: decision.permissionDecision }),
+        ...(decision.updatedInput && { updatedInput: decision.updatedInput }),
+      }
+    }
+    if (decision.additionalContext) {
+      output.additionalContext = decision.additionalContext
+    }
+    process.stdout.write(JSON.stringify(
+      Object.keys(output).length > 0 ? output : {},
+    ))
   }
   return decision
 }
