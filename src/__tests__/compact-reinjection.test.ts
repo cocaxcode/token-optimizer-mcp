@@ -55,7 +55,7 @@ describe('buildReinjectionPayload', () => {
 
   it('drops low-priority sections when fixture exceeds cap', () => {
     const db = getDb(':memory:')
-    const events = Array.from({ length: 50 }, (_, i) =>
+    const events = Array.from({ length: 50 }, (_) =>
       makeEvent({
         session_id: 'sess-1',
         tool_name: 'Read',

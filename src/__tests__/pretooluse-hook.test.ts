@@ -142,7 +142,7 @@ describe('runPreToolUseHook', () => {
     const scriptPath = path.join(tempDir, 'fake-rtk.js')
     fs.writeFileSync(scriptPath, 'process.stdout.write("rtk git status"); process.exit(0);')
     try {
-      const decision = runPreToolUseHook({
+      runPreToolUseHook({
         stdin: hookInput({ tool_input: { command: 'git status' } }),
         dbPath: ':memory:',
         projectDir: PROJECT_DIR,

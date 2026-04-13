@@ -114,11 +114,29 @@ You don't need to memorize tool names. Just say what you need.
 
 ### Claude Code (recommended)
 
+**Step 1 — Register the MCP server:**
+
 ```bash
 claude mcp add --scope user token-optimizer -- npx -y @cocaxcode/token-optimizer-mcp@latest --mcp
 ```
 
-Then verify:
+**Step 2 — Install globally (required for hooks):**
+
+```bash
+npm install -g @cocaxcode/token-optimizer-mcp
+```
+
+> **Why?** The 3 hooks (`PreToolUse`, `PostToolUse`, `SessionStart`) run via `npx @cocaxcode/token-optimizer-mcp --hook <name>`. Without a global install, `npx` can't find the binary and the hooks **fail silently** — no RTK bridge, no analytics, no compact recovery. The MCP server itself works fine with `npx -y`, but hooks need the package in PATH.
+
+**Step 3 — Set up hooks:**
+
+```bash
+npx @cocaxcode/token-optimizer-mcp install
+```
+
+**Step 4 — Restart Claude Code** (hooks are loaded at session start).
+
+**Step 5 — Verify:**
 
 ```bash
 npx @cocaxcode/token-optimizer-mcp doctor
@@ -361,9 +379,9 @@ brew install standard-input/tap/rtk
 rtk --version
 ```
 
-**Step 2 — token-optimizer bridge (automatic):**
+**Step 2 — token-optimizer bridge (automatic via global install):**
 
-If you installed token-optimizer with `claude mcp add` or `npx @cocaxcode/token-optimizer-mcp install`, the **PreToolUse hook** already acts as an RTK bridge:
+The **PreToolUse hook** acts as an RTK bridge — but it requires `npm install -g @cocaxcode/token-optimizer-mcp` (see [Installation](#installation)):
 
 1. Claude wants to run `git status`
 2. The hook calls `rtk rewrite "git status"`
@@ -372,6 +390,8 @@ If you installed token-optimizer with `claude mcp add` or `npx @cocaxcode/token-
 5. Output is filtered before it enters the context window
 
 This happens **automatically** for every Bash command — no manual `rtk` invocation needed.
+
+> **Important**: After installing, **restart Claude Code**. Hooks are loaded at session start — if the package wasn't installed when the session started, hooks won't fire until the next session.
 
 RTK exit codes:
 - **0** — rewrite + auto-allow (e.g., `git status` → `rtk git status`)

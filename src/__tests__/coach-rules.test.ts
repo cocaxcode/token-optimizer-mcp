@@ -17,7 +17,7 @@ function buildCtx(overrides: Partial<EventContext> = {}): EventContext {
 }
 
 function makeEvents(count: number, tool: string, overrides: Partial<ToolEvent> = {}): ToolEvent[] {
-  return Array.from({ length: count }, (_, i) =>
+  return Array.from({ length: count }, (_) =>
     makeEvent({
       tool_name: tool,
       ...overrides,
@@ -230,10 +230,10 @@ describe('detect-clear-opportunity', () => {
   const rule = DETECTION_RULES.find((r) => r.id === 'detect-clear-opportunity')!
 
   it('fires on low overlap between recent and prior windows', () => {
-    const recent = Array.from({ length: 20 }, (_, i) =>
+    const recent = Array.from({ length: 20 }, (_) =>
       makeEvent({ tool_name: 'Read' }),
     )
-    const prior = Array.from({ length: 20 }, (_, i) =>
+    const prior = Array.from({ length: 20 }, (_) =>
       makeEvent({ tool_name: 'Bash' }),
     )
     const hit = rule.run(buildCtx({ events: [...recent, ...prior] }))
@@ -241,7 +241,7 @@ describe('detect-clear-opportunity', () => {
   })
 
   it('does not fire with high overlap', () => {
-    const allSame = Array.from({ length: 40 }, (_, i) =>
+    const allSame = Array.from({ length: 40 }, (_) =>
       makeEvent({ tool_name: 'Read' }),
     )
     expect(rule.run(buildCtx({ events: allSame }))).toBeNull()
