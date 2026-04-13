@@ -107,9 +107,19 @@ export function runPostToolUseHook(opts: RunPostToolUseOptions = {}): ToolEvent 
   }
 
   // Fire-and-forget POST to xray if configured (silent on failure)
-  void postToXray(event as unknown as Record<string, unknown>).catch(() => {
-    /* swallow */
-  })
+  // Enrich event with project context so xray can group by project
+  try {
+    const projDir = opts.projectDir ?? resolveProjectDir()
+    const enriched: Record<string, unknown> = {
+      ...event,
+      project_path: projDir,
+      project_name: projDir.split(/[\\/]/).filter(Boolean).pop() ?? 'unknown',
+      project_hash: projectHash(projDir),
+    }
+    void postToXray(enriched).catch(() => { /* swallow */ })
+  } catch {
+    void postToXray(event as unknown as Record<string, unknown>).catch(() => { /* swallow */ })
+  }
 
   return event
 }

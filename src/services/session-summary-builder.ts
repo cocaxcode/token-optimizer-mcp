@@ -12,11 +12,14 @@ import {
 } from '../orchestration/detector.js'
 import { measureCurrentSchemaBytes } from '../orchestration/schema-measurer.js'
 import { getCoachSurfaceLog } from '../coach/surface.js'
+import { resolveProjectDir } from '../lib/paths.js'
 
 type DB = Database.Database
 
 export interface XraySummaryPayload {
   session_id: string
+  project_path: string
+  project_name: string
   total_tokens: number
   total_events: number
   by_source: Array<{ source: string; count: number; tokens: number }>
@@ -56,8 +59,13 @@ export function buildSessionSummary(
   // Coach tips surfaced during this session
   const coachTips = getCoachSurfaceLog(db, sessionId)
 
+  const projDir = resolveProjectDir()
+  const projName = projDir.split(/[\\/]/).filter(Boolean).pop() ?? 'unknown'
+
   return {
     session_id: sessionId,
+    project_path: projDir,
+    project_name: projName,
     total_tokens: usage.total_tokens,
     total_events: usage.total_events,
     by_source: usage.by_source,
