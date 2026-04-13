@@ -40,10 +40,14 @@ export async function dispatchCli(argv: string[]): Promise<number> {
       const mod = await import('./coach.js')
       return mod.runCoachCli(rest)
     }
+    case 'sync-xray': {
+      const mod = await import('./sync-xray.js')
+      return mod.runSyncXray(rest)
+    }
     default:
       console.error(`Subcomando desconocido: ${sub ?? '(ninguno)'}`)
       console.error(
-        'Disponibles: install, uninstall, doctor, status, report, budget, prune-mcp, coach, config',
+        'Disponibles: install, uninstall, doctor, status, report, budget, prune-mcp, coach, config, sync-xray',
       )
       return 1
   }
