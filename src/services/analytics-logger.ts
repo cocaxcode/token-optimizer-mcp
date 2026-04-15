@@ -37,9 +37,30 @@ const BUILTIN_TOOLS = new Set([
   'NotebookRead',
 ])
 
-export function classifySource(toolName: string): EventSource {
+// Matches any Bash command whose first token is `rtk` (optionally preceded
+// by env vars, `sudo`, or leading whitespace). Covers: `rtk git status`,
+// `  rtk cargo build`, `FOO=1 rtk vitest`, `sudo rtk docker ps`.
+const RTK_BASH_COMMAND = /^\s*(?:(?:[A-Z_][A-Z0-9_]*=\S*\s+)*(?:sudo\s+)?)rtk(?:\s|$)/
+
+function isRtkWrappedBash(toolInput: unknown): boolean {
+  if (!toolInput || typeof toolInput !== 'object') return false
+  const command = (toolInput as { command?: unknown }).command
+  if (typeof command !== 'string') return false
+  return RTK_BASH_COMMAND.test(command)
+}
+
+export function classifySource(
+  toolName: string,
+  toolInput?: unknown,
+): EventSource {
   if (OWN_TOOL_PATTERNS.some((re) => re.test(toolName))) return 'own'
-  if (BUILTIN_TOOLS.has(toolName)) return 'builtin'
+  if (BUILTIN_TOOLS.has(toolName)) {
+    // A Bash call that starts with `rtk ...` is RTK-filtered output, not a
+    // raw builtin. The output bytes have already been reduced by RTK, so we
+    // tag the event as `rtk` to give optimization credit to the filter.
+    if (toolName === 'Bash' && isRtkWrappedBash(toolInput)) return 'rtk'
+    return 'builtin'
+  }
   if (toolName.includes('serena')) return 'serena'
   if (toolName.includes('rtk')) return 'rtk'
   if (toolName.includes('xray')) return 'xray'

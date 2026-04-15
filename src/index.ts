@@ -32,7 +32,7 @@ if (first === '--hook') {
       process.exit(0)
       break
     case 'sessionstart':
-      runSessionStartHook()
+      await runSessionStartHook()
       process.exit(0)
       break
     default:

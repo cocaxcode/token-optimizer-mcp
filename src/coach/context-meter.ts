@@ -113,3 +113,18 @@ function cumulativeEstimate(
     estimation_method: 'estimated_cumulative',
   }
 }
+
+/**
+ * Synchronous DB-only context measurement for hot paths (PostToolUse).
+ * Skips transcript + xray strategies to stay under the 5ms budget. The
+ * estimation_method returned ('estimated_cumulative') is surfaced verbatim
+ * in tips so the agent knows this is a fast approximation.
+ */
+export function measureContextSizeFromDbSync(
+  db: DB,
+  sessionId: string,
+  activeModel?: string,
+): ContextMeasurement {
+  const limit = resolveLimit(activeModel)
+  return cumulativeEstimate(db, sessionId, limit)
+}

@@ -11,6 +11,8 @@ import {
 } from '../lib/paths.js'
 import { ensureStorageDir } from '../lib/storage.js'
 import { renderReinjectionMarkdown } from '../services/session-retriever.js'
+import { buildCoachSectionMarkdown } from '../coach/session-section.js'
+import { loadConfig } from '../cli/config.js'
 
 export interface SessionStartInput {
   session_id?: string
@@ -23,6 +25,11 @@ export interface RunSessionStartOptions {
   projectDir?: string
   writeStdout?: boolean
   budgetTokens?: number
+  coachEnabled?: boolean
+  coachMaxTips?: number
+  coachDedupeWindowSeconds?: number
+  activeModel?: string
+  home?: string
 }
 
 function readStdinSync(): string {
@@ -33,7 +40,9 @@ function readStdinSync(): string {
   }
 }
 
-export function runSessionStartHook(opts: RunSessionStartOptions = {}): string {
+export async function runSessionStartHook(
+  opts: RunSessionStartOptions = {},
+): Promise<string> {
   const raw = opts.stdin ?? readStdinSync()
   let parsed: SessionStartInput = {}
   try {
@@ -69,8 +78,28 @@ export function runSessionStartHook(opts: RunSessionStartOptions = {}): string {
       opts.budgetTokens ?? 2000,
     )
     markdown = renderReinjectionMarkdown(payload)
+
+    // Coach section (Phase 4.H) — append tips when rules fire
+    const cfg = loadConfig(opts.home)
+    const coachEnabled = opts.coachEnabled ?? (cfg.coach.enabled && cfg.coach.auto_surface)
+    if (coachEnabled) {
+      const coachOpts: Parameters<typeof buildCoachSectionMarkdown>[0] = {
+        db,
+        sessionId,
+        projectDir,
+        maxTips: opts.coachMaxTips ?? cfg.coach.sessionstart_tips_max,
+        dedupeWindowSeconds:
+          opts.coachDedupeWindowSeconds ?? cfg.coach.dedupe_window_seconds,
+        via: 'sessionstart',
+      }
+      if (opts.activeModel !== undefined) coachOpts.activeModel = opts.activeModel
+      const coachResult = await buildCoachSectionMarkdown(coachOpts)
+      if (coachResult.markdown) {
+        markdown = markdown ? `${markdown}\n\n${coachResult.markdown}` : coachResult.markdown
+      }
+    }
   } catch {
-    markdown = ''
+    // Fall through with whatever markdown we managed to build; never throw from a hook
   }
 
   if (opts.writeStdout !== false) {

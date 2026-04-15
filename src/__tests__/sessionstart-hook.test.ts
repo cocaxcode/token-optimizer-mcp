@@ -21,27 +21,29 @@ describe('runSessionStartHook', () => {
     closeDb()
   })
 
-  it('emits empty stdout for startup matcher', () => {
-    const md = runSessionStartHook({
+  it('emits empty stdout for startup matcher', async () => {
+    const md = await runSessionStartHook({
       stdin: JSON.stringify({ session_id: 'sess-1', matcher: 'startup' }),
       dbPath: ':memory:',
       projectDir: PROJECT_DIR,
       writeStdout: false,
+      coachEnabled: false,
     })
     expect(md).toBe('')
   })
 
-  it('emits empty stdout for resume matcher', () => {
-    const md = runSessionStartHook({
+  it('emits empty stdout for resume matcher', async () => {
+    const md = await runSessionStartHook({
       stdin: JSON.stringify({ session_id: 'sess-1', matcher: 'resume' }),
       dbPath: ':memory:',
       projectDir: PROJECT_DIR,
       writeStdout: false,
+      coachEnabled: false,
     })
     expect(md).toBe('')
   })
 
-  it('emits markdown payload for compact matcher', () => {
+  it('emits markdown payload for compact matcher', async () => {
     const db = getDb(':memory:')
     seedAnalyticsDb(db, [
       makeEvent({
@@ -53,32 +55,35 @@ describe('runSessionStartHook', () => {
         tool_name: 'Bash',
       }),
     ])
-    const md = runSessionStartHook({
+    const md = await runSessionStartHook({
       stdin: JSON.stringify({ session_id: 'sess-1', matcher: 'compact' }),
       dbPath: ':memory:',
       projectDir: PROJECT_DIR,
       writeStdout: false,
+      coachEnabled: false,
     })
     expect(md).toContain('## Presupuesto')
     expect(md).toContain('## Archivos recientes')
   })
 
-  it('handles malformed stdin gracefully', () => {
-    const md = runSessionStartHook({
+  it('handles malformed stdin gracefully', async () => {
+    const md = await runSessionStartHook({
       stdin: '{not json',
       dbPath: ':memory:',
       projectDir: PROJECT_DIR,
       writeStdout: false,
+      coachEnabled: false,
     })
     expect(md).toBe('')
   })
 
-  it('handles empty stdin gracefully', () => {
-    const md = runSessionStartHook({
+  it('handles empty stdin gracefully', async () => {
+    const md = await runSessionStartHook({
       stdin: '',
       dbPath: ':memory:',
       projectDir: PROJECT_DIR,
       writeStdout: false,
+      coachEnabled: false,
     })
     expect(md).toBe('')
   })

@@ -22,7 +22,7 @@ describe('runPostToolUseHook', () => {
     closeDb()
   })
 
-  it('writes {} to stdout for any input', () => {
+  it('writes {} to stdout when no coach hint fires', () => {
     runPostToolUseHook({
       stdin: JSON.stringify({
         session_id: 's1',
@@ -32,12 +32,13 @@ describe('runPostToolUseHook', () => {
       }),
       dbPath: ':memory:',
       projectDir: process.cwd(),
+      coachEnabled: false,
     })
     expect(stdoutBuffer).toBe('{}')
   })
 
   it('returns a ToolEvent with correct fields', () => {
-    const event = runPostToolUseHook({
+    const result = runPostToolUseHook({
       stdin: JSON.stringify({
         session_id: 's1',
         tool_name: 'Bash',
@@ -46,12 +47,13 @@ describe('runPostToolUseHook', () => {
       }),
       dbPath: ':memory:',
       projectDir: process.cwd(),
+      coachEnabled: false,
     })
-    expect(event).not.toBeNull()
-    expect(event?.tool_name).toBe('Bash')
-    expect(event?.source).toBe('builtin')
-    expect(event?.estimation_method).toBe('measured_exact')
-    expect(event?.tokens_estimated).toBeGreaterThan(0)
+    expect(result.event).not.toBeNull()
+    expect(result.event?.tool_name).toBe('Bash')
+    expect(result.event?.source).toBe('builtin')
+    expect(result.event?.estimation_method).toBe('measured_exact')
+    expect(result.event?.tokens_estimated).toBeGreaterThan(0)
   })
 
   it('persists the event to the DB', () => {
@@ -64,6 +66,7 @@ describe('runPostToolUseHook', () => {
       }),
       dbPath: ':memory:',
       projectDir: process.cwd(),
+      coachEnabled: false,
     })
     const db = getDb(':memory:')
     const queries = buildQueries(db)
@@ -73,12 +76,13 @@ describe('runPostToolUseHook', () => {
   })
 
   it('handles malformed stdin gracefully', () => {
-    const event = runPostToolUseHook({
+    const result = runPostToolUseHook({
       stdin: '{not valid json',
       dbPath: ':memory:',
       projectDir: process.cwd(),
+      coachEnabled: false,
     })
-    expect(event).toBeNull()
+    expect(result.event).toBeNull()
     expect(stdoutBuffer).toBe('{}')
   })
 
@@ -97,6 +101,7 @@ describe('runPostToolUseHook', () => {
         dbPath: ':memory:',
         projectDir: process.cwd(),
         writeStdout: false,
+        coachEnabled: false,
       })
       durations.push(performance.now() - start)
     }
@@ -113,12 +118,13 @@ describe('runPostToolUseHook', () => {
         stdin: '',
         dbPath: ':memory:',
         projectDir: process.cwd(),
+        coachEnabled: false,
       }),
     ).not.toThrow()
   })
 
   it('classifies own tools correctly', () => {
-    const event = runPostToolUseHook({
+    const result = runPostToolUseHook({
       stdin: JSON.stringify({
         session_id: 's1',
         tool_name: 'budget_set',
@@ -128,20 +134,22 @@ describe('runPostToolUseHook', () => {
       dbPath: ':memory:',
       projectDir: process.cwd(),
       writeStdout: false,
+      coachEnabled: false,
     })
-    expect(event?.source).toBe('own')
+    expect(result.event?.source).toBe('own')
   })
 
   // Guard-rail: even with vi.useFakeTimers this must not require real wall clock
   it('duration_ms is a non-negative number', () => {
     vi.useRealTimers()
-    const event = runPostToolUseHook({
+    const result = runPostToolUseHook({
       stdin: JSON.stringify({ session_id: 's1', tool_name: 'Read', tool_response: 'x' }),
       dbPath: ':memory:',
       projectDir: process.cwd(),
       writeStdout: false,
+      coachEnabled: false,
     })
-    expect(event?.duration_ms).not.toBeNull()
-    expect(event?.duration_ms).toBeGreaterThanOrEqual(0)
+    expect(result.event?.duration_ms).not.toBeNull()
+    expect(result.event?.duration_ms).toBeGreaterThanOrEqual(0)
   })
 })

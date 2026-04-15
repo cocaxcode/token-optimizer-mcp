@@ -125,23 +125,22 @@ npm run inspector # MCP Inspector
 
 ## Status
 
-**v0.1 implementation complete across phases 0-5.** Phase 6 polish in progress (README + registry files + CLAUDE.md expansion).
+**v0.1 implementation complete across phases 0-5 + Phase 4.H coach surfacing.** Phase 6 polish in progress (README + registry files + CLAUDE.md expansion).
 
 ### Current state
 
-- **Tests**: 238 passing in 28 suites
+- **Tests**: 272 passing in 32 suites
 - **MCP tools**: 13 registered (3 budget + 1 session + 7 orchestration + 1 coach + 2 toon — wait that's 14, plus 1 for counting carefully)
+- **MCP resources**: 1 (`token-optimizer://coach/tips`)
 - **CLI subcommands**: 9 (install, uninstall, doctor, status, report, budget, prune-mcp, config, coach)
 - **Hooks**: 3 functional (pretooluse, posttooluse, sessionstart)
 - **Schema**: 8 tables + FTS5 virtual + 2 triggers + 4 indices, WAL mode
 - **Coach layer**: 18 tips, 11 rules (8 active + 3 stubs for external state), 3-source context meter, surface dedupe via SQL
+- **Coach surfacing**: active on SessionStart:compact (≤3 tips) + PostToolUse throttled (1 warn+ tip every N events, default 20)
 
 ### Deferred to Phase 6 or later
 
 - `prune-mcp-cli.test.ts` dedicated suite (indirect coverage via orchestration-mcp-tools.test.ts)
-- PostToolUse throttled surfacing (config.coach.auto_surface, deferred to avoid latency risk)
-- SessionStart coach 5th section (wire buildReinjectionPayload to coach/surface)
-- MCP resource `token-optimizer://coach/tips` (only tool version registered)
 - `toon-format` real package: current implementation uses compact JSON (round-trip lossless); swap-in-place when package exists
 - `estimateTokensActual` count_tokens API sampling wired in (implemented + unit-tested; not invoked from hook path yet)
 

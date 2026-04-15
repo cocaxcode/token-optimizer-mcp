@@ -10,6 +10,7 @@ import { registerSessionTools } from './tools/session.js'
 import { registerOrchestrationTools } from './tools/orchestration.js'
 import { registerCoachTools } from './tools/coach.js'
 import { registerToonTools } from './tools/toon.js'
+import { registerCoachTipsResource } from './resources/coach-tips.js'
 
 declare const __PKG_VERSION__: string
 const VERSION = typeof __PKG_VERSION__ !== 'undefined' ? __PKG_VERSION__ : '0.1.0'
@@ -57,6 +58,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
   // Phase 4 tools
   registerOrchestrationTools(server, db)
   registerCoachTools(server, db)
+  registerCoachTipsResource(server, db)
   // Phase 5 tools
   registerToonTools(server)
 

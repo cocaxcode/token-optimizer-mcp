@@ -18,7 +18,9 @@ import {
 import { ensureStorageDir } from '../lib/storage.js'
 import { buildQueries } from '../db/queries.js'
 import { postToXray } from '../services/xray-client.js'
-import type { ToolEvent } from '../lib/types.js'
+import { buildCoachHintSync } from '../coach/session-section.js'
+import { loadConfig } from '../cli/config.js'
+import type { ToolEvent, DetectionSeverity } from '../lib/types.js'
 
 export interface PostToolUseInput {
   session_id?: string
@@ -51,13 +53,31 @@ export interface RunPostToolUseOptions {
   dbPath?: string
   projectDir?: string
   writeStdout?: boolean
+  /** Override coach config for testing; undefined → loadConfig() */
+  coachEnabled?: boolean
+  coachThrottle?: number
+  coachDedupeWindowSeconds?: number
+  coachMinSeverity?: DetectionSeverity
+  home?: string
 }
 
-export function runPostToolUseHook(opts: RunPostToolUseOptions = {}): ToolEvent | null {
+export interface PostToolUseResult {
+  event: ToolEvent | null
+  additionalContext: string | null
+}
+
+export function runPostToolUseHook(
+  opts: RunPostToolUseOptions = {},
+): PostToolUseResult {
   const start = Date.now()
-  if (opts.writeStdout !== false) {
-    // Respond immediately so Claude Code is never blocked
-    process.stdout.write('{}')
+
+  const writeOutput = (additionalContext: string | null): void => {
+    if (opts.writeStdout === false) return
+    if (additionalContext) {
+      process.stdout.write(JSON.stringify({ additionalContext }))
+    } else {
+      process.stdout.write('{}')
+    }
   }
 
   const raw = opts.stdin ?? readStdinSync()
@@ -65,14 +85,15 @@ export function runPostToolUseHook(opts: RunPostToolUseOptions = {}): ToolEvent 
   try {
     parsed = raw ? (JSON.parse(raw) as PostToolUseInput) : {}
   } catch {
-    return null
+    writeOutput(null)
+    return { event: null, additionalContext: null }
   }
 
   const sessionId = parsed.session_id ?? 'unknown'
   const toolName = parsed.tool_name ?? 'unknown'
   const outputBytes = extractOutputBytes(parsed.tool_response)
 
-  const source = classifySource(toolName)
+  const source = classifySource(toolName, parsed.tool_input)
   const estimationMethod = tagEstimationMethod(source)
 
   const event: ToolEvent = {
@@ -87,6 +108,7 @@ export function runPostToolUseHook(opts: RunPostToolUseOptions = {}): ToolEvent 
     created_at: new Date().toISOString(),
   }
 
+  let additionalContext: string | null = null
   try {
     const projectDir = opts.projectDir ?? resolveProjectDir()
     let dbPath: string
@@ -102,9 +124,32 @@ export function runPostToolUseHook(opts: RunPostToolUseOptions = {}): ToolEvent 
     const queue = new AnalyticsQueue(db)
     queue.enqueue(event)
     queue.flush()
+
+    // Phase 4.H — throttled coach surfacing
+    const cfg = loadConfig(opts.home)
+    const coachEnabled =
+      opts.coachEnabled ?? (cfg.coach.enabled && cfg.coach.auto_surface)
+    if (coachEnabled) {
+      const throttle = opts.coachThrottle ?? cfg.coach.posttooluse_throttle
+      const count = queries.countToolCallsBySession(sessionId)
+      if (throttle > 0 && count > 0 && count % throttle === 0) {
+        const hintOpts: Parameters<typeof buildCoachHintSync>[0] = {
+          db,
+          sessionId,
+          dedupeWindowSeconds:
+            opts.coachDedupeWindowSeconds ?? cfg.coach.dedupe_window_seconds,
+          minSeverity: opts.coachMinSeverity ?? 'warn',
+          via: 'posttooluse',
+        }
+        const hint = buildCoachHintSync(hintOpts)
+        if (hint.text) additionalContext = hint.text
+      }
+    }
   } catch {
     // Hook must never block — swallow any persistence error
   }
+
+  writeOutput(additionalContext)
 
   // Fire-and-forget POST to xray if configured (silent on failure)
   // Enrich event with project context so xray can group by project
@@ -121,5 +166,5 @@ export function runPostToolUseHook(opts: RunPostToolUseOptions = {}): ToolEvent 
     void postToXray(event as unknown as Record<string, unknown>).catch(() => { /* swallow */ })
   }
 
-  return event
+  return { event, additionalContext }
 }

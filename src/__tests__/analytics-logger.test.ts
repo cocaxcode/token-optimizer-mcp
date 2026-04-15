@@ -33,6 +33,39 @@ describe('classifySource', () => {
     expect(classifySource('mcp__logbook__note')).toBe('mcp')
     expect(classifySource('mcp__database__query')).toBe('mcp')
   })
+
+  describe('Bash wrapped in rtk', () => {
+    it('reclassifies Bash as rtk when command starts with "rtk "', () => {
+      expect(classifySource('Bash', { command: 'rtk git status' })).toBe('rtk')
+      expect(classifySource('Bash', { command: 'rtk cargo build' })).toBe('rtk')
+      expect(classifySource('Bash', { command: 'rtk vitest run' })).toBe('rtk')
+    })
+
+    it('tolerates leading whitespace and env vars', () => {
+      expect(classifySource('Bash', { command: '  rtk ls src/' })).toBe('rtk')
+      expect(classifySource('Bash', { command: 'NO_COLOR=1 rtk git log' })).toBe('rtk')
+      expect(classifySource('Bash', { command: 'FOO=bar BAR=baz rtk tsc' })).toBe('rtk')
+    })
+
+    it('keeps Bash as builtin when command does not start with rtk', () => {
+      expect(classifySource('Bash', { command: 'git status' })).toBe('builtin')
+      expect(classifySource('Bash', { command: 'echo rtk is cool' })).toBe('builtin')
+      expect(classifySource('Bash', { command: 'cat rtk.log' })).toBe('builtin')
+      expect(classifySource('Bash', { command: '/path/to/rtk-like' })).toBe('builtin')
+    })
+
+    it('keeps Bash as builtin when tool_input is missing or malformed', () => {
+      expect(classifySource('Bash')).toBe('builtin')
+      expect(classifySource('Bash', null)).toBe('builtin')
+      expect(classifySource('Bash', {})).toBe('builtin')
+      expect(classifySource('Bash', { command: 123 })).toBe('builtin')
+    })
+
+    it('does not reclassify non-Bash builtins even with a matching command field', () => {
+      expect(classifySource('Read', { command: 'rtk git status' })).toBe('builtin')
+      expect(classifySource('Grep', { command: 'rtk ls' })).toBe('builtin')
+    })
+  })
 })
 
 describe('tagEstimationMethod', () => {

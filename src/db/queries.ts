@@ -52,6 +52,10 @@ export function buildQueries(db: DB) {
      FROM tool_calls WHERE session_id = ?`,
   )
 
+  const countToolCallsBySessionStmt = db.prepare(
+    `SELECT COUNT(*) as c FROM tool_calls WHERE session_id = ?`,
+  )
+
   const sumTokensBySessionSince = db.prepare(
     `SELECT COALESCE(SUM(tokens_estimated), 0) as total
      FROM tool_calls WHERE session_id = ? AND created_at >= ?`,
@@ -150,6 +154,10 @@ export function buildQueries(db: DB) {
     sumTokensBySession(sessionId: string): number {
       const row = sumTokensBySession.get(sessionId) as { total: number } | undefined
       return row?.total ?? 0
+    },
+    countToolCallsBySession(sessionId: string): number {
+      const row = countToolCallsBySessionStmt.get(sessionId) as { c: number } | undefined
+      return row?.c ?? 0
     },
     sumTokensBySessionSince(sessionId: string, since: string): number {
       const row = sumTokensBySessionSince.get(sessionId, since) as { total: number } | undefined
