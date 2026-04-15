@@ -10,13 +10,22 @@ import type { SerenaProbe } from '../hooks/serena-activate.js'
 // Default probe for existing tests that pre-date Serena detection: pretend
 // Serena is absent so the baseline hook count stays at 3.
 const PROBE_ABSENT: SerenaProbe = {
-  serena_hooks_in_path: false,
-  serena_home_dir_exists: false,
+  serena_cli_installed: false,
+  serena_mcp_registered: false,
   present: false,
 }
+// "Full" Serena — CLI is installed, MCP is registered. All 4 hooks go in.
 const PROBE_PRESENT: SerenaProbe = {
-  serena_hooks_in_path: true,
-  serena_home_dir_exists: true,
+  serena_cli_installed: true,
+  serena_mcp_registered: true,
+  present: true,
+}
+// "Mcp only" — only the config dir / MCP server is registered, no CLI binary.
+// Only the serena-activate hook should be installed; the 3 official ones must
+// NOT be registered (they would fail at runtime).
+const PROBE_MCP_ONLY: SerenaProbe = {
+  serena_cli_installed: false,
+  serena_mcp_registered: true,
   present: true,
 }
 
@@ -279,6 +288,119 @@ describe('runInstall', () => {
     const stopEmpty = (json.hooks as { Stop: Array<{ matcher: string; hooks: Array<{ command: string }> }> }).Stop.find((e) => e.matcher === '')
     expect(stopEmpty?.hooks.some((h) => h.command.includes('cxc-xray'))).toBe(true)
     expect(stopEmpty?.hooks.some((h) => h.command === 'serena-hooks cleanup --client=claude-code')).toBe(true)
+  })
+
+  it('MCP-only probe installs serena-activate but NOT the 3 official hooks', () => {
+    runInstall([], {
+      home,
+      cwd,
+      print,
+      runDoctorAtEnd: false,
+      serenaProbe: PROBE_MCP_ONLY,
+    })
+    const settingsPath = path.join(home, '.claude', 'settings.json')
+    const json = readSettings(settingsPath)
+    // serena-activate yes (it doesn't need the CLI)
+    expect(countTokenOptimizerEntries(json.hooks)).toBe(4)
+    // 3 official ones NO — CLI not installed, they would fail at runtime
+    expect(countSerenaOfficialEntries(json.hooks)).toBe(0)
+  })
+
+  it('reconcile: removes orphan serena-hooks entries when CLI disappeared', () => {
+    // Simulate a settings.json left behind by an older install that
+    // registered the 3 official hooks even though the CLI is no longer
+    // available (the 0.4.11 bug path). On the next install with the
+    // fixed probe, we should clean them out.
+    const settingsPath = path.join(home, '.claude', 'settings.json')
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        {
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: '',
+                hooks: [
+                  { type: 'command', command: 'cxc-xray-hook pre-tool-use 3333' },
+                  { type: 'command', command: 'serena-hooks remind --client=claude-code' },
+                ],
+              },
+              {
+                matcher: 'mcp__serena__.*',
+                hooks: [
+                  { type: 'command', command: 'serena-hooks auto-approve --client=claude-code' },
+                ],
+              },
+            ],
+            Stop: [
+              {
+                matcher: '',
+                hooks: [
+                  { type: 'command', command: 'cxc-xray-hook stop 3333' },
+                  { type: 'command', command: 'serena-hooks cleanup --client=claude-code' },
+                ],
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      ),
+    )
+
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_MCP_ONLY })
+    const json = readSettings(settingsPath)
+
+    // All 3 orphan official entries gone
+    expect(countSerenaOfficialEntries(json.hooks)).toBe(0)
+    // xray entries still there (not ours, don't touch)
+    const preEmpty = (json.hooks as { PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }> }).PreToolUse?.find((e) => e.matcher === '')
+    expect(preEmpty?.hooks.some((h) => h.command.includes('cxc-xray'))).toBe(true)
+    const stopEmpty = (json.hooks as { Stop: Array<{ matcher: string; hooks: Array<{ command: string }> }> }).Stop?.find((e) => e.matcher === '')
+    expect(stopEmpty?.hooks.some((h) => h.command.includes('cxc-xray'))).toBe(true)
+    // mcp__serena__.* matcher group now has zero hooks and was removed
+    const serenaMatcher = (json.hooks as { PreToolUse: Array<{ matcher: string }> }).PreToolUse?.find((e) => e.matcher === 'mcp__serena__.*')
+    expect(serenaMatcher).toBeUndefined()
+  })
+
+  it('reconcile: leaves orphan entries alone when CLI is back again', () => {
+    // Same starting state as above, but this time the probe says CLI is
+    // installed. Re-running install should keep the 3 official hooks in
+    // place (idempotent, not duplicated).
+    const settingsPath = path.join(home, '.claude', 'settings.json')
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        {
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: '',
+                hooks: [
+                  { type: 'command', command: 'serena-hooks remind --client=claude-code' },
+                ],
+              },
+            ],
+            Stop: [
+              {
+                matcher: '',
+                hooks: [
+                  { type: 'command', command: 'serena-hooks cleanup --client=claude-code' },
+                ],
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      ),
+    )
+
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_PRESENT })
+    const json = readSettings(settingsPath)
+    expect(countSerenaOfficialEntries(json.hooks)).toBe(3)
   })
 
   it('does not overwrite sessionstart:compact when serena-activate is installed', () => {

@@ -34,12 +34,30 @@ const INSTRUCTION = [
 ].join(' ')
 
 export interface SerenaProbe {
-  serena_hooks_in_path: boolean
-  serena_home_dir_exists: boolean
+  /**
+   * The `serena-hooks` CLI binary is actually installed and executable on this
+   * machine. Required to register the 3 official Serena hooks (remind,
+   * auto-approve, cleanup) in settings.json — without the binary, Claude Code
+   * would try to run them and fail with "command not found" on every hook
+   * dispatch.
+   */
+  serena_cli_installed: boolean
+  /**
+   * There is some Serena footprint on this machine (`~/.serena/` directory,
+   * usually created by the Serena MCP server or CLI the first time it runs).
+   * This is independent of whether the CLI binary is installed; the user may
+   * have only the MCP server registered.
+   */
+  serena_mcp_registered: boolean
+  /**
+   * True when at least one of the two above is true. Used by the
+   * serena-activate hook to decide whether to emit its SessionStart payload —
+   * that hook does NOT depend on the CLI, it only writes JSON to stdout.
+   */
   present: boolean
 }
 
-/** Detect whether Serena looks installed on this machine. Cheap and sync. */
+/** Detect Serena installation state. Cheap and sync. */
 export function probeSerenaPresence(
   env: NodeJS.ProcessEnv = process.env,
 ): SerenaProbe {
@@ -47,8 +65,9 @@ export function probeSerenaPresence(
   const whichCmd = isWindows ? 'where' : 'which'
   const binName = isWindows ? 'serena-hooks.exe' : 'serena-hooks'
 
-  // Strategy 1: $PATH via where/which.
-  let serena_hooks_in_path = false
+  // Strategy 1 — $PATH via where/which. This is what actually matters for
+  // `serena-hooks ...` commands to execute at runtime.
+  let serena_cli_installed = false
   try {
     const result = spawnSync(whichCmd, ['serena-hooks'], {
       encoding: 'utf8',
@@ -57,14 +76,16 @@ export function probeSerenaPresence(
       env,
     })
     if (result.status === 0 && result.stdout && result.stdout.trim().length > 0) {
-      serena_hooks_in_path = true
+      serena_cli_installed = true
     }
   } catch {
-    /* swallow — falls through to strategy 2 */
+    /* swallow — fall through to strategy 2 */
   }
 
-  // Strategy 2: common install locations (fallback when `which` is flaky).
-  if (!serena_hooks_in_path) {
+  // Strategy 2 — common install locations (fallback when `where`/`which` can't
+  // find things in a minimal shell PATH, or when the hook is invoked with a
+  // stripped env).
+  if (!serena_cli_installed) {
     const candidates = [
       path.join(os.homedir(), '.local', 'bin', binName),
       ...(isWindows
@@ -76,21 +97,22 @@ export function probeSerenaPresence(
     ]
     for (const c of candidates) {
       if (fs.existsSync(c)) {
-        serena_hooks_in_path = true
+        serena_cli_installed = true
         break
       }
     }
   }
 
-  // Strategy 3: ~/.serena/ config dir. Even without the binary, this usually
-  // means the user had Serena at some point and likely still has the MCP
-  // server registered.
-  const serena_home_dir_exists = fs.existsSync(path.join(os.homedir(), '.serena'))
+  // Independent signal — is the MCP server / config dir around? This alone is
+  // NOT enough to register the 3 official hooks (they need the CLI), but it is
+  // enough to install our own `--hook serena-activate` (which just emits
+  // JSON and doesn't shell out to any binary).
+  const serena_mcp_registered = fs.existsSync(path.join(os.homedir(), '.serena'))
 
   return {
-    serena_hooks_in_path,
-    serena_home_dir_exists,
-    present: serena_hooks_in_path || serena_home_dir_exists,
+    serena_cli_installed,
+    serena_mcp_registered,
+    present: serena_cli_installed || serena_mcp_registered,
   }
 }
 

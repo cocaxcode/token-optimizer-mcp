@@ -110,6 +110,49 @@ function extractHookFlag(command: string): string | null {
 }
 
 /**
+ * Remove any handlers whose command contains `identifier` from the given
+ * (eventName, matcher) group. Used to un-register hooks that were installed
+ * in a previous run but no longer apply (e.g. the 3 official Serena hooks
+ * when the `serena-hooks` CLI is no longer in PATH).
+ *
+ * Returns the number of handlers removed. If the matcher group becomes empty,
+ * the whole group is dropped from the event list. If the event itself becomes
+ * empty, the event key is deleted from the hooks map.
+ */
+function removeHook(
+  allHooks: Record<string, unknown>,
+  eventName: string,
+  matcher: string,
+  identifier: string,
+): number {
+  const existing = allHooks[eventName]
+  if (!Array.isArray(existing)) return 0
+  const list = existing as HookEntry[]
+  const matchEntry = list.find((e) => e.matcher === matcher)
+  if (!matchEntry || !Array.isArray(matchEntry.hooks)) return 0
+
+  const before = matchEntry.hooks.length
+  matchEntry.hooks = matchEntry.hooks.filter(
+    (h) => !(typeof h.command === 'string' && h.command.includes(identifier)),
+  )
+  const removed = before - matchEntry.hooks.length
+  if (removed === 0) return 0
+
+  // Clean empty matcher groups
+  if (matchEntry.hooks.length === 0) {
+    const idx = list.indexOf(matchEntry)
+    if (idx >= 0) list.splice(idx, 1)
+  }
+  // Clean empty event
+  if (list.length === 0) {
+    delete allHooks[eventName]
+  } else {
+    allHooks[eventName] = list
+  }
+  return removed
+}
+
+/**
  * Options for upsertHook.
  * - `identifier`: a substring that uniquely identifies an existing handler of
  *   the same kind so we can replace it in place. Defaults to "token-optimizer"
@@ -198,28 +241,32 @@ export function runInstall(_args: string[] = [], opts: InstallOptions = {}): num
   upsertHook(hooks, 'PostToolUse', '*', `${hookBase} --hook posttooluse`)
   upsertHook(hooks, 'SessionStart', 'compact', `${hookBase} --hook sessionstart`)
 
-  // Serena integration — three independent blocks, all gated by the same
-  // probe:
+  // Serena integration — two independent decisions based on two probe signals:
   //
-  //   1) Our own `--hook serena-activate` (SessionStart). Fixes the ToolSearch
-  //      gap in the official `serena-hooks activate` output.
-  //   2) The 3 OFFICIAL Serena reminder hooks (remind, auto-approve, cleanup),
-  //      registered as `serena-hooks <cmd> --client=claude-code` entries.
-  //      We do NOT reimplement them — we just point settings.json at the
-  //      binary the user already has on PATH. This keeps behaviour in sync
-  //      with upstream Serena and avoids duplicating stateful logic.
+  //   (a) `--hook serena-activate` (our own SessionStart hook). Fixes the
+  //       ToolSearch gap in the official `serena-hooks activate` output. Does
+  //       NOT shell out to any binary — it's a node entry point that emits
+  //       JSON. Gated by `serena_mcp_registered` (i.e. the user uses Serena
+  //       as an MCP server at all).
   //
-  // Both blocks are skipped when Serena isn't detected. The official hooks
-  // can also be skipped explicitly via `skipSerenaHooks: true`.
+  //   (b) The 3 OFFICIAL Serena reminder hooks (remind, auto-approve, cleanup).
+  //       These ARE invoked as `serena-hooks <cmd> ...` at runtime by Claude
+  //       Code, so they require the actual CLI binary to be on PATH. Gated by
+  //       `serena_cli_installed`. If the CLI disappears (user uninstalled
+  //       Serena, or the probe was wrong in a previous release), we actively
+  //       REMOVE the orphan entries so settings.json stops pointing at a
+  //       missing binary.
+  //
+  // Both blocks can be individually skipped via `skipSerenaHooks: true`.
   const serenaProbe = opts.serenaProbe ?? probeSerenaPresence()
-  const serenaOfficialInstalled = serenaProbe.present && opts.skipSerenaHooks !== true
+  const wantOfficialHooks =
+    serenaProbe.serena_cli_installed && opts.skipSerenaHooks !== true
 
-  if (serenaProbe.present) {
+  if (serenaProbe.serena_mcp_registered || serenaProbe.serena_cli_installed) {
     upsertHook(hooks, 'SessionStart', '', `${hookBase} --hook serena-activate`)
   }
 
-  if (serenaOfficialInstalled) {
-    // PreToolUse: `remind` on every tool call, `auto-approve` on Serena tools.
+  if (wantOfficialHooks) {
     upsertHook(hooks, 'PreToolUse', '', 'serena-hooks remind --client=claude-code', {
       identifier: 'serena-hooks remind',
       useFlagDisambiguation: false,
@@ -234,11 +281,18 @@ export function runInstall(_args: string[] = [], opts: InstallOptions = {}): num
         useFlagDisambiguation: false,
       },
     )
-    // Stop: cleanup
     upsertHook(hooks, 'Stop', '', 'serena-hooks cleanup --client=claude-code', {
       identifier: 'serena-hooks cleanup',
       useFlagDisambiguation: false,
     })
+  } else {
+    // Reconcile: if the 3 official hooks were added by a previous install
+    // (maybe from a buggier probe that accepted ~/.serena/ as sufficient),
+    // but the CLI isn't actually available now, take them OUT so Claude
+    // Code stops logging "command not found" on every hook dispatch.
+    removeHook(hooks, 'PreToolUse', '', 'serena-hooks remind')
+    removeHook(hooks, 'PreToolUse', 'mcp__serena__.*', 'serena-hooks auto-approve')
+    removeHook(hooks, 'Stop', '', 'serena-hooks cleanup')
   }
   settings.hooks = hooks
 
@@ -256,13 +310,18 @@ export function runInstall(_args: string[] = [], opts: InstallOptions = {}): num
   print('token-optimizer-mcp instalado correctamente.')
   print(`  settings: ${p}`)
   print(`  global:   ${globalDir}`)
-  if (serenaProbe.present) {
-    print(`  serena:   detectado — hook serena-activate registrado en SessionStart`)
-    if (serenaOfficialInstalled) {
-      print(`            + 3 hooks oficiales registrados (remind, auto-approve, cleanup)`)
-    } else {
-      print(`            hooks oficiales omitidos (skipSerenaHooks)`)
+
+  // Serena status — 3 states
+  if (serenaProbe.serena_cli_installed) {
+    print(`  serena:   CLI detectado — 4 hooks registrados`)
+    print(`            (activate + remind + auto-approve + cleanup)`)
+    if (opts.skipSerenaHooks) {
+      print(`            note: --skipSerenaHooks activo → solo se registró serena-activate`)
     }
+  } else if (serenaProbe.serena_mcp_registered) {
+    print(`  serena:   MCP detectado pero CLI no instalado`)
+    print(`            → solo se registró serena-activate`)
+    print(`            → para los otros 3: uv tool install git+https://github.com/oraios/serena`)
   } else {
     print(`  serena:   no detectado — hooks de serena omitidos`)
   }

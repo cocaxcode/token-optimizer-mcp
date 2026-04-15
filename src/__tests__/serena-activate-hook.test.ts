@@ -50,8 +50,8 @@ describe('runSerenaActivateHook', () => {
   it('emits an empty object when Serena is not detected', () => {
     const result = runSerenaActivateHook({
       probe: {
-        serena_hooks_in_path: false,
-        serena_home_dir_exists: false,
+        serena_cli_installed: false,
+        serena_mcp_registered: false,
         present: false,
       },
     })
@@ -60,11 +60,11 @@ describe('runSerenaActivateHook', () => {
     expect(cap.text).toBe('{}')
   })
 
-  it('emits the full activation payload when Serena is detected via $PATH', () => {
+  it('emits the full activation payload when Serena CLI is detected via $PATH', () => {
     const result = runSerenaActivateHook({
       probe: {
-        serena_hooks_in_path: true,
-        serena_home_dir_exists: false,
+        serena_cli_installed: true,
+        serena_mcp_registered: false,
         present: true,
       },
     })
@@ -89,11 +89,11 @@ describe('runSerenaActivateHook', () => {
     )
   })
 
-  it('emits the activation payload when only ~/.serena/ is present', () => {
+  it('emits the activation payload when only ~/.serena/ is present (MCP-only)', () => {
     const result = runSerenaActivateHook({
       probe: {
-        serena_hooks_in_path: false,
-        serena_home_dir_exists: true,
+        serena_cli_installed: false,
+        serena_mcp_registered: true,
         present: true,
       },
     })
@@ -112,8 +112,8 @@ describe('runSerenaActivateHook', () => {
   it('does not write stdout when writeStdout is false', () => {
     runSerenaActivateHook({
       probe: {
-        serena_hooks_in_path: true,
-        serena_home_dir_exists: true,
+        serena_cli_installed: true,
+        serena_mcp_registered: true,
         present: true,
       },
       writeStdout: false,
@@ -123,8 +123,8 @@ describe('runSerenaActivateHook', () => {
 
   it('returns the probe it actually used', () => {
     const probe = {
-      serena_hooks_in_path: true,
-      serena_home_dir_exists: false,
+      serena_cli_installed: true,
+      serena_mcp_registered: false,
       present: true,
     }
     const result = runSerenaActivateHook({ probe, writeStdout: false })
@@ -135,10 +135,12 @@ describe('runSerenaActivateHook', () => {
 describe('probeSerenaPresence', () => {
   it('returns a probe object with the expected shape', () => {
     const probe = probeSerenaPresence()
-    expect(probe).toHaveProperty('serena_hooks_in_path')
-    expect(probe).toHaveProperty('serena_home_dir_exists')
+    expect(probe).toHaveProperty('serena_cli_installed')
+    expect(probe).toHaveProperty('serena_mcp_registered')
     expect(probe).toHaveProperty('present')
     expect(typeof probe.present).toBe('boolean')
+    expect(typeof probe.serena_cli_installed).toBe('boolean')
+    expect(typeof probe.serena_mcp_registered).toBe('boolean')
   })
 
   it('considers the machine ready when neither the binary nor the home dir exists', () => {
