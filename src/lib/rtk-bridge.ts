@@ -64,9 +64,15 @@ export function findRtkBinary(opts: FindRtkOptions = {}): string | null {
       windowsHide: true,
     })
     if (result.status === 0 && result.stdout?.trim()) {
-      const found = result.stdout.trim().split(/\r?\n/)[0]
-      cachedRtkPath = found
-      return found
+      const lines = result.stdout.trim().split(/\r?\n/).map(l => l.trim()).filter(Boolean)
+      // On Windows, prefer .exe over npm shim scripts (which fail with ENOENT in spawnSync)
+      const found = IS_WINDOWS
+        ? (lines.find(l => l.toLowerCase().endsWith('.exe')) ?? lines[0])
+        : lines[0]
+      if (found) {
+        cachedRtkPath = found
+        return found
+      }
     }
   } catch {
     // swallow
