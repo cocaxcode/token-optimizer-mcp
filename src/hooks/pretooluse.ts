@@ -31,14 +31,6 @@ export interface PreToolUseDecision {
   permissionDecision?: string
 }
 
-interface HookOutput {
-  hookSpecificOutput?: {
-    hookEventName: string
-    permissionDecision?: string
-    updatedInput?: { command: string }
-  }
-  additionalContext?: string
-}
 
 function readStdinSync(): string {
   try {
@@ -121,17 +113,13 @@ export function runPreToolUseHook(
       const result = rtkRewrite(command, rtkPath)
       if (result) {
         if ((result.exitCode === 0 || result.exitCode === 3) && result.rewritten) {
-          // Exit 0: rewrite + auto-allow
-          // Exit 3: rewrite + ask — but Claude Code needs permissionDecision
-          //   to honor updatedInput, so we always set "allow"
-          //
           // RTK always outputs "rtk <args>" using the short name, but in
           // Git Bash (Windows) "rtk" may not be on the shell PATH. Replace
           // the short name with the absolute binary path we already found so
           // bash can execute it regardless of PATH configuration.
+          // Convert Windows path to Git Bash Unix-style: C:\tools\rtk\rtk.exe → /c/tools/rtk/rtk.exe
           let finalCmd = result.rewritten
           if ((finalCmd.startsWith('rtk ') || finalCmd === 'rtk') && rtkPath) {
-            // Convert Windows path to Git Bash Unix-style: C:\tools\rtk\rtk.exe → /c/tools/rtk/rtk.exe
             let bashPath = rtkPath.replace(/\\/g, '/')
             if (/^[A-Za-z]:\//.test(bashPath)) {
               bashPath = '/' + bashPath[0].toLowerCase() + bashPath.slice(2)
@@ -141,9 +129,7 @@ export function runPreToolUseHook(
           decision.updatedInput = { command: finalCmd }
           decision.permissionDecision = 'allow'
 
-          // Stamp a mark in the DB so PostToolUse can reclassify this event
-          // as source=rtk. PostToolUse only sees the original tool_input, so
-          // without this mark the hit would be mis-tagged as source=builtin.
+          // Stamp a mark in the DB so PostToolUse can reclassify this event as source=rtk.
           try {
             const projectDir = opts.projectDir ?? resolveProjectDir()
             const dbPath =
@@ -166,14 +152,14 @@ export function runPreToolUseHook(
   }
 
   if (opts.writeStdout !== false) {
-    // Claude Code expects hookSpecificOutput wrapper for PreToolUse
-    const output: HookOutput = {}
-    if (decision.updatedInput || decision.permissionDecision) {
-      output.hookSpecificOutput = {
-        hookEventName: 'PreToolUse',
-        ...(decision.permissionDecision && { permissionDecision: decision.permissionDecision }),
-        ...(decision.updatedInput && { updatedInput: decision.updatedInput }),
-      }
+    // updatedInput + permissionDecision at ROOT level (not inside hookSpecificOutput)
+    // so Claude Code honors them. additionalContext was already at root level.
+    const output: Record<string, unknown> = {}
+    if (decision.updatedInput) {
+      output.updatedInput = decision.updatedInput
+    }
+    if (decision.permissionDecision) {
+      output.permissionDecision = decision.permissionDecision
     }
     if (decision.additionalContext) {
       output.additionalContext = decision.additionalContext
