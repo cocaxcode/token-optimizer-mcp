@@ -25,16 +25,35 @@ import { hashCommand } from '../lib/command-hash.js'
 describe('rtk rewrite PreToolUse ↔ PostToolUse correlation', () => {
   let cwd: string
   let dbPath: string
+  let prevXrayUrl: string | undefined
+  let prevHome: string | undefined
 
   beforeEach(async () => {
     cwd = await mkdtemp(path.join(tmpdir(), 'tompx-rtk-corr-'))
     fs.writeFileSync(path.join(cwd, 'package.json'), '{"name":"test"}')
     dbPath = path.join(cwd, 'analytics.db')
+
+    // Block the fire-and-forget POST to any xray server the dev might have running.
+    // Without this, every test inserts a row into ~/.xray/data.db tagged with the
+    // temp dir as project_path, polluting the real dashboard with "tompx-rtk-corr-*"
+    // sessions that live forever.
+    prevXrayUrl = process.env.XRAY_URL
+    process.env.XRAY_URL = ''
+
+    // Isolate the token-optimizer global storage as well so nothing leaks into
+    // ~/.token-optimizer/analytics.db when internal paths resolve it.
+    prevHome = process.env.TOKEN_OPTIMIZER_HOME
+    process.env.TOKEN_OPTIMIZER_HOME = path.join(cwd, '.token-optimizer')
+
     closeDb()
   })
 
   afterEach(() => {
     closeDb()
+    if (prevXrayUrl === undefined) delete process.env.XRAY_URL
+    else process.env.XRAY_URL = prevXrayUrl
+    if (prevHome === undefined) delete process.env.TOKEN_OPTIMIZER_HOME
+    else process.env.TOKEN_OPTIMIZER_HOME = prevHome
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 

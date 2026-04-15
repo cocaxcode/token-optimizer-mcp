@@ -3,7 +3,7 @@
 
 import fs from 'node:fs'
 import path from 'node:path'
-import os from 'node:os'
+import { resolveGlobalDir } from '../lib/paths.js'
 
 export interface CoachConfig {
   enabled: boolean
@@ -50,7 +50,13 @@ export const DEFAULT_CONFIG: Config = {
 }
 
 export function getConfigPath(home?: string): string {
-  return path.join(home ?? os.homedir(), '.token-optimizer', 'config.json')
+  // Respect explicit `home` override first (tests, CLI --home). Otherwise use
+  // resolveGlobalDir() which honours TOKEN_OPTIMIZER_HOME env var, keeping the
+  // config path consistent with the analytics.db path in every caller.
+  if (home !== undefined) {
+    return path.join(home, '.token-optimizer', 'config.json')
+  }
+  return path.join(resolveGlobalDir(), 'config.json')
 }
 
 function deepMerge<T>(target: T, source: unknown): T {
