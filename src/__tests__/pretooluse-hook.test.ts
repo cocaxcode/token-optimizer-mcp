@@ -194,6 +194,119 @@ describe('runPreToolUseHook', () => {
     expect(cmd).toBe('rtk git status')
   })
 
+  it('rewrites command when RTK returns exitCode 0 (not only exitCode 3)', async () => {
+    const { rtkRewrite } = await import('../lib/rtk-bridge.js')
+    vi.mocked(rtkRewrite).mockReturnValueOnce({
+      rewritten: 'rtk git status',
+      exitCode: 0,
+      success: true,
+    })
+
+    const decision = runPreToolUseHook({
+      stdin: hookInput({ tool_input: { command: 'git status' } }),
+      dbPath: ':memory:',
+      projectDir: PROJECT_DIR,
+      writeStdout: false,
+      rtkPath: '/fake/rtk',
+    })
+
+    expect(decision.updatedInput).toBeDefined()
+    expect(decision.updatedInput!.command).toBe('rtk git status')
+    expect(decision.permissionDecision).toBe('allow')
+  })
+
+  it('passthrough (no updatedInput) when RTK present but returns exitCode 1 (no rewrite)', async () => {
+    const { rtkRewrite } = await import('../lib/rtk-bridge.js')
+    vi.mocked(rtkRewrite).mockReturnValueOnce({
+      rewritten: '',
+      exitCode: 1,
+      success: false,
+    })
+
+    const decision = runPreToolUseHook({
+      stdin: hookInput({ tool_input: { command: 'git status' } }),
+      dbPath: ':memory:',
+      projectDir: PROJECT_DIR,
+      writeStdout: false,
+      rtkPath: '/fake/rtk',
+    })
+
+    expect(decision.updatedInput).toBeUndefined()
+    expect(decision.permissionDecision).toBeUndefined()
+  })
+
+  it('passthrough (no updatedInput) when RTK present but returns exitCode 2 (deny)', async () => {
+    const { rtkRewrite } = await import('../lib/rtk-bridge.js')
+    vi.mocked(rtkRewrite).mockReturnValueOnce({
+      rewritten: '',
+      exitCode: 2,
+      success: false,
+    })
+
+    const decision = runPreToolUseHook({
+      stdin: hookInput({ tool_input: { command: 'git status' } }),
+      dbPath: ':memory:',
+      projectDir: PROJECT_DIR,
+      writeStdout: false,
+      rtkPath: '/fake/rtk',
+    })
+
+    expect(decision.updatedInput).toBeUndefined()
+    expect(decision.permissionDecision).toBeUndefined()
+  })
+
+  it('stamps rtk_rewrites row in DB after successful rewrite', async () => {
+    const { rtkRewrite } = await import('../lib/rtk-bridge.js')
+    vi.mocked(rtkRewrite).mockReturnValueOnce({
+      rewritten: 'rtk git log --oneline -5',
+      exitCode: 0,
+      success: true,
+    })
+
+    const db = getDb(':memory:')
+    runPreToolUseHook({
+      stdin: hookInput({ tool_input: { command: 'git log --oneline -5' } }),
+      dbPath: ':memory:',
+      projectDir: PROJECT_DIR,
+      writeStdout: false,
+      rtkPath: '/fake/rtk',
+    })
+
+    const row = db
+      .prepare('SELECT * FROM rtk_rewrites WHERE session_id = ?')
+      .get('sess-1') as { rewritten_to: string } | undefined
+    expect(row).toBeDefined()
+    expect(row!.rewritten_to).toBe('rtk git log --oneline -5')
+  })
+
+  it('sets both additionalContext and updatedInput when budget exceeded + RTK rewrites', async () => {
+    const { rtkRewrite } = await import('../lib/rtk-bridge.js')
+    vi.mocked(rtkRewrite).mockReturnValueOnce({
+      rewritten: 'rtk git diff',
+      exitCode: 0,
+      success: true,
+    })
+
+    const db = getDb(':memory:')
+    const manager = new BudgetManager(db)
+    manager.setBudget({ scope: 'session', scope_key: 'sess-1', limit_tokens: 10, mode: 'warn' })
+    seedAnalyticsDb(db, [makeEvent({ session_id: 'sess-1', tokens_estimated: 50 })])
+
+    const decision = runPreToolUseHook({
+      stdin: hookInput({ tool_input: { command: 'git diff' } }),
+      dbPath: ':memory:',
+      projectDir: PROJECT_DIR,
+      writeStdout: false,
+      rtkPath: '/fake/rtk',
+    })
+
+    expect(decision.additionalContext).toBeDefined()
+    expect(decision.additionalContext).toContain('Presupuesto')
+    expect(decision.updatedInput).toBeDefined()
+    expect(decision.updatedInput!.command).toBe('rtk git diff')
+    expect(decision.permissionDecision).toBe('allow')
+  })
+
   it('writes decision JSON to stdout when writeStdout=true', () => {
     const originalWrite = process.stdout.write.bind(process.stdout)
     let captured = ''
