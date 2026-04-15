@@ -42,6 +42,26 @@ function countTokenOptimizerEntries(hooks: unknown): number {
   return count
 }
 
+function countSerenaOfficialEntries(hooks: unknown): number {
+  if (!hooks || typeof hooks !== 'object') return 0
+  let count = 0
+  for (const event of Object.values(hooks as Record<string, unknown>)) {
+    if (!Array.isArray(event)) continue
+    for (const entry of event as Array<{ hooks?: Array<{ command?: string }> }>) {
+      for (const h of entry.hooks ?? []) {
+        if (
+          typeof h.command === 'string' &&
+          h.command.includes('serena-hooks ') &&
+          !h.command.includes('token-optimizer')
+        ) {
+          count++
+        }
+      }
+    }
+  }
+  return count
+}
+
 describe('runInstall', () => {
   let home: string
   let cwd: string
@@ -158,6 +178,107 @@ describe('runInstall', () => {
     const sessionStart = (json.hooks as { SessionStart: Array<{ matcher: string; hooks: Array<{ command: string }> }> }).SessionStart
     const allSerena = sessionStart.flatMap((e) => (e.hooks ?? []).filter((h) => h.command.includes('--hook serena-activate')))
     expect(allSerena).toHaveLength(1)
+  })
+
+  it('installs the 3 official Serena hooks when Serena is detected', () => {
+    runInstall([], {
+      home,
+      cwd,
+      print,
+      runDoctorAtEnd: false,
+      serenaProbe: PROBE_PRESENT,
+    })
+    const settingsPath = path.join(home, '.claude', 'settings.json')
+    const json = readSettings(settingsPath)
+    expect(countSerenaOfficialEntries(json.hooks)).toBe(3)
+    // Verify each official hook is registered in the right place.
+    const preToolUse = (json.hooks as { PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }> }).PreToolUse
+    const emptyMatcher = preToolUse.find((e) => e.matcher === '')
+    expect(emptyMatcher?.hooks.some((h) => h.command === 'serena-hooks remind --client=claude-code')).toBe(true)
+    const serenaMatcher = preToolUse.find((e) => e.matcher === 'mcp__serena__.*')
+    expect(serenaMatcher?.hooks.some((h) => h.command === 'serena-hooks auto-approve --client=claude-code')).toBe(true)
+    const stop = (json.hooks as { Stop: Array<{ matcher: string; hooks: Array<{ command: string }> }> }).Stop
+    const stopEmpty = stop.find((e) => e.matcher === '')
+    expect(stopEmpty?.hooks.some((h) => h.command === 'serena-hooks cleanup --client=claude-code')).toBe(true)
+  })
+
+  it('does not install the 3 official Serena hooks when Serena is absent', () => {
+    runInstall([], {
+      home,
+      cwd,
+      print,
+      runDoctorAtEnd: false,
+      serenaProbe: PROBE_ABSENT,
+    })
+    const settingsPath = path.join(home, '.claude', 'settings.json')
+    const json = readSettings(settingsPath)
+    expect(countSerenaOfficialEntries(json.hooks)).toBe(0)
+  })
+
+  it('skipSerenaHooks installs serena-activate but not the 3 official ones', () => {
+    runInstall([], {
+      home,
+      cwd,
+      print,
+      runDoctorAtEnd: false,
+      serenaProbe: PROBE_PRESENT,
+      skipSerenaHooks: true,
+    })
+    const settingsPath = path.join(home, '.claude', 'settings.json')
+    const json = readSettings(settingsPath)
+    // serena-activate still goes in (it's ours)
+    expect(countTokenOptimizerEntries(json.hooks)).toBe(4)
+    // but the 3 official ones are omitted
+    expect(countSerenaOfficialEntries(json.hooks)).toBe(0)
+  })
+
+  it('is idempotent with the 3 official Serena hooks', () => {
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_PRESENT })
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_PRESENT })
+    const settingsPath = path.join(home, '.claude', 'settings.json')
+    const json = readSettings(settingsPath)
+    expect(countSerenaOfficialEntries(json.hooks)).toBe(3)
+    expect(countTokenOptimizerEntries(json.hooks)).toBe(4)
+  })
+
+  it('preserves pre-existing non-serena hooks in the same matcher groups', () => {
+    // Simulate a settings.json that already has xray hooks in PreToolUse
+    // matcher="" and Stop matcher="", so we can confirm we append next to
+    // them without stealing their handler slot.
+    const settingsPath = path.join(home, '.claude', 'settings.json')
+    fs.mkdirSync(path.dirname(settingsPath), { recursive: true })
+    fs.writeFileSync(
+      settingsPath,
+      JSON.stringify(
+        {
+          hooks: {
+            PreToolUse: [
+              {
+                matcher: '',
+                hooks: [{ type: 'command', command: 'cxc-xray-hook pre-tool-use 3333' }],
+              },
+            ],
+            Stop: [
+              {
+                matcher: '',
+                hooks: [{ type: 'command', command: 'cxc-xray-hook stop 3333' }],
+              },
+            ],
+          },
+        },
+        null,
+        2,
+      ),
+    )
+
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_PRESENT })
+    const json = readSettings(settingsPath)
+    const preEmpty = (json.hooks as { PreToolUse: Array<{ matcher: string; hooks: Array<{ command: string }> }> }).PreToolUse.find((e) => e.matcher === '')
+    expect(preEmpty?.hooks.some((h) => h.command.includes('cxc-xray'))).toBe(true)
+    expect(preEmpty?.hooks.some((h) => h.command === 'serena-hooks remind --client=claude-code')).toBe(true)
+    const stopEmpty = (json.hooks as { Stop: Array<{ matcher: string; hooks: Array<{ command: string }> }> }).Stop.find((e) => e.matcher === '')
+    expect(stopEmpty?.hooks.some((h) => h.command.includes('cxc-xray'))).toBe(true)
+    expect(stopEmpty?.hooks.some((h) => h.command === 'serena-hooks cleanup --client=claude-code')).toBe(true)
   })
 
   it('does not overwrite sessionstart:compact when serena-activate is installed', () => {

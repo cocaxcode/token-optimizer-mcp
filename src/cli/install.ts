@@ -65,6 +65,13 @@ export interface InstallOptions {
    * Undefined = probe the real filesystem/PATH.
    */
   serenaProbe?: SerenaProbe
+  /**
+   * Skip installing the 3 official Serena reminder hooks (remind, auto-approve,
+   * cleanup) even when Serena is detected. The Serena-activate hook we own is
+   * still installed. Use this if you prefer managing the official hooks yourself
+   * or you don't want to depend on Serena's alpha feature.
+   */
+  skipSerenaHooks?: boolean
 }
 
 function settingsPath(home: string): string {
@@ -102,41 +109,56 @@ function extractHookFlag(command: string): string | null {
   return match ? `--hook ${match[1]}` : null
 }
 
+/**
+ * Options for upsertHook.
+ * - `identifier`: a substring that uniquely identifies an existing handler of
+ *   the same kind so we can replace it in place. Defaults to "token-optimizer"
+ *   for our own hooks. For external hooks (e.g. serena-hooks), callers should
+ *   pass something like "serena-hooks remind".
+ * - `useFlagDisambiguation`: if true, use the `--hook X` flag as extra
+ *   disambiguation so multiple token-optimizer hooks can coexist in the same
+ *   matcher group without trampling each other. Default true.
+ */
+interface UpsertHookOptions {
+  identifier?: string
+  useFlagDisambiguation?: boolean
+}
+
 function upsertHook(
   allHooks: Record<string, unknown>,
   eventName: string,
   matcher: string,
   command: string,
+  upsertOpts: UpsertHookOptions = {},
 ): void {
+  const identifier = upsertOpts.identifier ?? 'token-optimizer'
+  const useFlagDisambiguation = upsertOpts.useFlagDisambiguation ?? true
+
   const existing = (allHooks[eventName] ?? []) as HookEntry[]
   const list: HookEntry[] = Array.isArray(existing) ? [...existing] : []
   const matchEntry = list.find((e) => e.matcher === matcher)
   const ourHandler = { type: 'command', command }
-  const ourFlag = extractHookFlag(command)
+  const ourFlag = useFlagDisambiguation ? extractHookFlag(command) : null
 
   if (matchEntry) {
     const handlers = Array.isArray(matchEntry.hooks) ? [...matchEntry.hooks] : []
-    // 1) Preferred: find the exact `--hook X` handler we own. Lets us keep
-    //    multiple token-optimizer hooks in the same matcher group without
-    //    trampling each other (e.g. SessionStart `` will eventually have
-    //    both `--hook sessionstart` and `--hook serena-activate`).
+    // 1) Preferred: find the exact handler we own by identifier + flag.
     let idx = -1
     if (ourFlag) {
       idx = handlers.findIndex(
         (h) =>
           typeof h.command === 'string' &&
-          h.command.includes('token-optimizer') &&
+          h.command.includes(identifier) &&
           extractHookFlag(h.command) === ourFlag,
       )
     }
-    // 2) Legacy fallback: any token-optimizer handler — used for the
-    //    matchers that have always held exactly one of our hooks (Bash,
-    //    `*`, `compact`). Keeps pre-0.4.10 installs idempotent on upgrade.
+    // 2) Fallback: any handler that includes the identifier (and doesn't
+    //    have a --hook flag of its own so we don't steal a sibling's slot).
     if (idx < 0) {
       idx = handlers.findIndex(
         (h) =>
           typeof h.command === 'string' &&
-          h.command.includes('token-optimizer') &&
+          h.command.includes(identifier) &&
           extractHookFlag(h.command) === null,
       )
     }
@@ -176,15 +198,47 @@ export function runInstall(_args: string[] = [], opts: InstallOptions = {}): num
   upsertHook(hooks, 'PostToolUse', '*', `${hookBase} --hook posttooluse`)
   upsertHook(hooks, 'SessionStart', 'compact', `${hookBase} --hook sessionstart`)
 
-  // Serena-activate hook — only installed when Serena is detected on this
-  // machine. The hook itself is a noop on machines without Serena (emits
-  // {}), so installing it everywhere would be safe too, but explicit
-  // detection keeps the settings.json clean of hooks the user didn't ask
-  // for. Safe on upgrade: extractHookFlag-based upsert means re-running
-  // install won't duplicate the entry.
+  // Serena integration — three independent blocks, all gated by the same
+  // probe:
+  //
+  //   1) Our own `--hook serena-activate` (SessionStart). Fixes the ToolSearch
+  //      gap in the official `serena-hooks activate` output.
+  //   2) The 3 OFFICIAL Serena reminder hooks (remind, auto-approve, cleanup),
+  //      registered as `serena-hooks <cmd> --client=claude-code` entries.
+  //      We do NOT reimplement them — we just point settings.json at the
+  //      binary the user already has on PATH. This keeps behaviour in sync
+  //      with upstream Serena and avoids duplicating stateful logic.
+  //
+  // Both blocks are skipped when Serena isn't detected. The official hooks
+  // can also be skipped explicitly via `skipSerenaHooks: true`.
   const serenaProbe = opts.serenaProbe ?? probeSerenaPresence()
+  const serenaOfficialInstalled = serenaProbe.present && opts.skipSerenaHooks !== true
+
   if (serenaProbe.present) {
     upsertHook(hooks, 'SessionStart', '', `${hookBase} --hook serena-activate`)
+  }
+
+  if (serenaOfficialInstalled) {
+    // PreToolUse: `remind` on every tool call, `auto-approve` on Serena tools.
+    upsertHook(hooks, 'PreToolUse', '', 'serena-hooks remind --client=claude-code', {
+      identifier: 'serena-hooks remind',
+      useFlagDisambiguation: false,
+    })
+    upsertHook(
+      hooks,
+      'PreToolUse',
+      'mcp__serena__.*',
+      'serena-hooks auto-approve --client=claude-code',
+      {
+        identifier: 'serena-hooks auto-approve',
+        useFlagDisambiguation: false,
+      },
+    )
+    // Stop: cleanup
+    upsertHook(hooks, 'Stop', '', 'serena-hooks cleanup --client=claude-code', {
+      identifier: 'serena-hooks cleanup',
+      useFlagDisambiguation: false,
+    })
   }
   settings.hooks = hooks
 
@@ -204,8 +258,13 @@ export function runInstall(_args: string[] = [], opts: InstallOptions = {}): num
   print(`  global:   ${globalDir}`)
   if (serenaProbe.present) {
     print(`  serena:   detectado — hook serena-activate registrado en SessionStart`)
+    if (serenaOfficialInstalled) {
+      print(`            + 3 hooks oficiales registrados (remind, auto-approve, cleanup)`)
+    } else {
+      print(`            hooks oficiales omitidos (skipSerenaHooks)`)
+    }
   } else {
-    print(`  serena:   no detectado — hook serena-activate omitido`)
+    print(`  serena:   no detectado — hooks de serena omitidos`)
   }
 
   if (opts.runDoctorAtEnd !== false) {
