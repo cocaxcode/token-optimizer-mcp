@@ -105,6 +105,24 @@ describe('orchestration MCP tools', () => {
     expect(result.content[0].text).toContain('confirm:true')
   })
 
+  it('mcp_prune_apply rejects when neither allowlist nor exclude is provided', async () => {
+    const result = (await ctx.client.callTool({
+      name: 'mcp_prune_apply',
+      arguments: { confirm: true },
+    })) as ToolResult
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toContain('exactamente uno')
+  })
+
+  it('mcp_prune_apply rejects when both allowlist and exclude are provided', async () => {
+    const result = (await ctx.client.callTool({
+      name: 'mcp_prune_apply',
+      arguments: { allowlist: ['a'], exclude: ['b'], confirm: true },
+    })) as ToolResult
+    expect(result.isError).toBe(true)
+    expect(result.content[0].text).toContain('exactamente uno')
+  })
+
   it('mcp_prune_rollback rejects without confirm', async () => {
     const result = (await ctx.client.callTool({
       name: 'mcp_prune_rollback',

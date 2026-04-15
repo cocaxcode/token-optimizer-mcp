@@ -181,31 +181,68 @@ export function registerOrchestrationTools(server: McpServer, db: DB): void {
   // ── mcp_prune_apply ──
   server.tool(
     'mcp_prune_apply',
-    'Aplica un allowlist de MCPs escribiendo en .claude/settings.local.json. Requiere confirm:true.',
+    'Restringe los MCPs activos escribiendo enabledMcpjsonServers en .claude/settings.local.json. Requiere confirm:true. Acepta dos formas equivalentes: allowlist (lista blanca, los que SI quieres) o exclude (lista negra, los que NO quieres). Se debe pasar exactamente una de las dos.',
     {
-      allowlist: z.array(z.string()).describe('Nombres de servidores MCP a permitir'),
+      allowlist: z
+        .array(z.string())
+        .optional()
+        .describe('Nombres de MCPs a permitir (lista blanca). Exclusivo con exclude.'),
+      exclude: z
+        .array(z.string())
+        .optional()
+        .describe(
+          'Nombres de MCPs a desactivar (lista negra). Internamente se traduce a allowlist = registrados - exclude. Exclusivo con allowlist.',
+        ),
       confirm: z.boolean().describe('Debe ser true para confirmar la escritura'),
     },
-    async ({ allowlist, confirm }) => {
+    async ({ allowlist, exclude, confirm }) => {
       try {
         if (confirm !== true) {
           return error(
             'Operacion destructiva: requiere confirm:true. Revisa el allowlist antes de aplicar.',
           )
         }
+        const hasAllow = Array.isArray(allowlist)
+        const hasExclude = Array.isArray(exclude)
+        if (hasAllow === hasExclude) {
+          return error(
+            'Debes pasar exactamente uno: allowlist (los que SI quieres) o exclude (los que NO quieres).',
+          )
+        }
+
         const schema = measureCurrentSchemaBytes()
         const registered = new Set(schema.mcp_servers)
-        if (registered.size > 0) {
-          const invalid = allowlist.filter((s) => !registered.has(s))
-          if (invalid.length > 0) {
-            return error(
-              `Allowlist contiene MCPs no registrados en settings: ${invalid.join(', ')}`,
-            )
+
+        let effective: string[]
+        let translationNote = ''
+
+        if (hasAllow) {
+          effective = allowlist as string[]
+          if (registered.size > 0) {
+            const invalid = effective.filter((s) => !registered.has(s))
+            if (invalid.length > 0) {
+              return error(
+                `Allowlist contiene MCPs no registrados en settings: ${invalid.join(', ')}`,
+              )
+            }
           }
+        } else {
+          const excludeSet = new Set(exclude as string[])
+          if (registered.size > 0) {
+            const invalid = (exclude as string[]).filter((s) => !registered.has(s))
+            if (invalid.length > 0) {
+              return error(
+                `Exclude contiene MCPs no registrados en settings: ${invalid.join(', ')}`,
+              )
+            }
+          }
+          effective = [...registered].filter((s) => !excludeSet.has(s))
+          translationNote = `\n  exclude: [${(exclude as string[]).join(', ')}]\n  → allowlist efectivo: [${effective.join(', ')}]`
         }
-        const applied = applyAllowlist(allowlist, { source: 'mcp' })
+
+        const applied = applyAllowlist(effective, { source: 'mcp' })
         return text(
-          `Allowlist aplicado.\n  settings: ${applied.settings_path}\n  backup:   ${applied.backup_path}`,
+          `Allowlist aplicado.${translationNote}\n  settings: ${applied.settings_path}\n  backup:   ${applied.backup_path}`,
         )
       } catch (e) {
         return error(e instanceof Error ? e.message : String(e))
