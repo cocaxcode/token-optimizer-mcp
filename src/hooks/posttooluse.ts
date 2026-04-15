@@ -47,7 +47,9 @@ function readStdinSync(): string {
   }
 }
 
-function extractOutputBytes(response: unknown): number {
+// Returns character count of the tool response (JS string .length = UTF-16 code units,
+// not bytes). Named *Chars* to avoid confusion with byte-level measurements.
+function extractOutputChars(response: unknown): number {
   if (response == null) return 0
   if (typeof response === 'string') return response.length
   try {
@@ -100,7 +102,7 @@ export function runPostToolUseHook(
 
   const sessionId = parsed.session_id ?? 'unknown'
   const toolName = parsed.tool_name ?? 'unknown'
-  const outputBytes = extractOutputBytes(parsed.tool_response)
+  const outputChars = extractOutputChars(parsed.tool_response)
 
   let source: EventSource = classifySource(toolName, parsed.tool_input)
   let estimationMethod = tagEstimationMethod(source)
@@ -111,8 +113,8 @@ export function runPostToolUseHook(
     session_id: sessionId,
     tool_name: toolName,
     source,
-    output_bytes: outputBytes,
-    tokens_estimated: estimateTokensFast(outputBytes),
+    output_bytes: outputChars,
+    tokens_estimated: estimateTokensFast(outputChars),
     tokens_actual: null,
     duration_ms: parsed.duration_ms ?? Date.now() - start,
     estimation_method: estimationMethod,
