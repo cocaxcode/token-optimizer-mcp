@@ -5,6 +5,20 @@ import { mkdtemp } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { runInstall } from '../cli/install.js'
 import { runUninstall } from '../cli/uninstall.js'
+import type { SerenaProbe } from '../hooks/serena-activate.js'
+
+// Default probe for existing tests that pre-date Serena detection: pretend
+// Serena is absent so the baseline hook count stays at 3.
+const PROBE_ABSENT: SerenaProbe = {
+  serena_hooks_in_path: false,
+  serena_home_dir_exists: false,
+  present: false,
+}
+const PROBE_PRESENT: SerenaProbe = {
+  serena_hooks_in_path: true,
+  serena_home_dir_exists: true,
+  present: true,
+}
 
 async function makeTempRoot(prefix: string): Promise<string> {
   return mkdtemp(path.join(tmpdir(), `tompx-cli-${prefix}-`))
@@ -46,7 +60,7 @@ describe('runInstall', () => {
   })
 
   it('creates settings.json with mcpServers + 3 hooks on fresh install', () => {
-    const code = runInstall([], { home, cwd, print, runDoctorAtEnd: false })
+    const code = runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_ABSENT })
     expect(code).toBe(0)
     const settingsPath = path.join(home, '.claude', 'settings.json')
     expect(fs.existsSync(settingsPath)).toBe(true)
@@ -67,7 +81,7 @@ describe('runInstall', () => {
         },
       }),
     )
-    runInstall([], { home, cwd, print, runDoctorAtEnd: false })
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_ABSENT })
     const json = readSettings(settingsPath)
     expect((json.mcpServers as Record<string, unknown>)['other-mcp']).toBeDefined()
     // rtk handler MUST still be there alongside our own
@@ -81,22 +95,87 @@ describe('runInstall', () => {
   })
 
   it('is idempotent (re-install does not duplicate entries)', () => {
-    runInstall([], { home, cwd, print, runDoctorAtEnd: false })
-    runInstall([], { home, cwd, print, runDoctorAtEnd: false })
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_ABSENT })
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_ABSENT })
     const settingsPath = path.join(home, '.claude', 'settings.json')
     const json = readSettings(settingsPath)
     expect(countTokenOptimizerEntries(json.hooks)).toBe(3)
   })
 
   it('creates global storage dir', () => {
-    runInstall([], { home, cwd, print, runDoctorAtEnd: false })
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_ABSENT })
     const globalDir = path.join(home, '.token-optimizer')
     expect(fs.existsSync(globalDir)).toBe(true)
   })
 
+  it('installs the serena-activate hook when Serena is detected', () => {
+    runInstall([], {
+      home,
+      cwd,
+      print,
+      runDoctorAtEnd: false,
+      serenaProbe: PROBE_PRESENT,
+    })
+    const settingsPath = path.join(home, '.claude', 'settings.json')
+    const json = readSettings(settingsPath)
+    // Now 4 token-optimizer hooks: pretooluse, posttooluse, sessionstart:compact,
+    // and serena-activate in SessionStart matcher ''.
+    expect(countTokenOptimizerEntries(json.hooks)).toBe(4)
+    // Find the serena-activate entry specifically.
+    const sessionStart = (json.hooks as { SessionStart: Array<{ matcher: string; hooks: Array<{ command: string }> }> }).SessionStart
+    const emptyMatcher = sessionStart.find((e) => e.matcher === '')
+    expect(emptyMatcher).toBeDefined()
+    const serenaHook = emptyMatcher?.hooks.find(
+      (h) => h.command.includes('--hook serena-activate'),
+    )
+    expect(serenaHook).toBeDefined()
+  })
+
+  it('does not install the serena-activate hook when Serena is absent', () => {
+    runInstall([], {
+      home,
+      cwd,
+      print,
+      runDoctorAtEnd: false,
+      serenaProbe: PROBE_ABSENT,
+    })
+    const settingsPath = path.join(home, '.claude', 'settings.json')
+    const json = readSettings(settingsPath)
+    expect(countTokenOptimizerEntries(json.hooks)).toBe(3)
+    // And the specific command must NOT appear anywhere.
+    const raw = fs.readFileSync(settingsPath, 'utf8')
+    expect(raw).not.toContain('--hook serena-activate')
+  })
+
+  it('is idempotent with the serena-activate hook', () => {
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_PRESENT })
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_PRESENT })
+    const settingsPath = path.join(home, '.claude', 'settings.json')
+    const json = readSettings(settingsPath)
+    // Must still be 4, not 8.
+    expect(countTokenOptimizerEntries(json.hooks)).toBe(4)
+    // And specifically: exactly one --hook serena-activate.
+    const sessionStart = (json.hooks as { SessionStart: Array<{ matcher: string; hooks: Array<{ command: string }> }> }).SessionStart
+    const allSerena = sessionStart.flatMap((e) => (e.hooks ?? []).filter((h) => h.command.includes('--hook serena-activate')))
+    expect(allSerena).toHaveLength(1)
+  })
+
+  it('does not overwrite sessionstart:compact when serena-activate is installed', () => {
+    // Regression: both hooks live in SessionStart under different matchers;
+    // upserting one must not delete or rewrite the other.
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_PRESENT })
+    const settingsPath = path.join(home, '.claude', 'settings.json')
+    const json = readSettings(settingsPath)
+    const sessionStart = (json.hooks as { SessionStart: Array<{ matcher: string; hooks: Array<{ command: string }> }> }).SessionStart
+    const compact = sessionStart.find((e) => e.matcher === 'compact')
+    expect(compact?.hooks.some((h) => h.command.includes('--hook sessionstart'))).toBe(true)
+    const empty = sessionStart.find((e) => e.matcher === '')
+    expect(empty?.hooks.some((h) => h.command.includes('--hook serena-activate'))).toBe(true)
+  })
+
   it('creates per-project storage dir when cwd is a git repo', () => {
     fs.mkdirSync(path.join(cwd, '.git'), { recursive: true })
-    runInstall([], { home, cwd, print, runDoctorAtEnd: false })
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_ABSENT })
     const projectStorage = path.join(cwd, '.token-optimizer')
     expect(fs.existsSync(projectStorage)).toBe(true)
     // .gitignore should contain our entry
@@ -116,7 +195,7 @@ describe('runUninstall', () => {
     home = await makeTempRoot('uninst-home')
     cwd = await makeTempRoot('uninst-cwd')
     captured.length = 0
-    runInstall([], { home, cwd, print, runDoctorAtEnd: false })
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_ABSENT })
   })
 
   afterEach(() => {

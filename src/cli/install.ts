@@ -7,6 +7,7 @@ import path from 'node:path'
 import os from 'node:os'
 import { spawnSync } from 'node:child_process'
 import { ensureStorageDir } from '../lib/storage.js'
+import { probeSerenaPresence, type SerenaProbe } from '../hooks/serena-activate.js'
 import { runDoctor } from './doctor.js'
 
 const SERVER_NAME = 'token-optimizer'
@@ -58,6 +59,12 @@ export interface InstallOptions {
   cwd?: string
   print?: (msg: string) => void
   runDoctorAtEnd?: boolean
+  /**
+   * Override the Serena presence probe. Used by tests to get deterministic
+   * behaviour independent of whether the test host actually has Serena.
+   * Undefined = probe the real filesystem/PATH.
+   */
+  serenaProbe?: SerenaProbe
 }
 
 function settingsPath(home: string): string {
@@ -85,6 +92,16 @@ interface HookEntry {
   [key: string]: unknown
 }
 
+/**
+ * Extract the `--hook <kind>` flag from a command line so we can use it as
+ * a unique identity for upsert. `node .../index.js --hook serena-activate`
+ * becomes `--hook serena-activate`. Anything without a `--hook X` returns null.
+ */
+function extractHookFlag(command: string): string | null {
+  const match = command.match(/--hook\s+(\S+)/)
+  return match ? `--hook ${match[1]}` : null
+}
+
 function upsertHook(
   allHooks: Record<string, unknown>,
   eventName: string,
@@ -95,12 +112,35 @@ function upsertHook(
   const list: HookEntry[] = Array.isArray(existing) ? [...existing] : []
   const matchEntry = list.find((e) => e.matcher === matcher)
   const ourHandler = { type: 'command', command }
+  const ourFlag = extractHookFlag(command)
 
   if (matchEntry) {
     const handlers = Array.isArray(matchEntry.hooks) ? [...matchEntry.hooks] : []
-    const idx = handlers.findIndex(
-      (h) => typeof h.command === 'string' && h.command.includes('token-optimizer'),
-    )
+    // 1) Preferred: find the exact `--hook X` handler we own. Lets us keep
+    //    multiple token-optimizer hooks in the same matcher group without
+    //    trampling each other (e.g. SessionStart `` will eventually have
+    //    both `--hook sessionstart` and `--hook serena-activate`).
+    let idx = -1
+    if (ourFlag) {
+      idx = handlers.findIndex(
+        (h) =>
+          typeof h.command === 'string' &&
+          h.command.includes('token-optimizer') &&
+          extractHookFlag(h.command) === ourFlag,
+      )
+    }
+    // 2) Legacy fallback: any token-optimizer handler — used for the
+    //    matchers that have always held exactly one of our hooks (Bash,
+    //    `*`, `compact`). Keeps pre-0.4.10 installs idempotent on upgrade.
+    if (idx < 0) {
+      idx = handlers.findIndex(
+        (h) =>
+          typeof h.command === 'string' &&
+          h.command.includes('token-optimizer') &&
+          extractHookFlag(h.command) === null,
+      )
+    }
+
     if (idx >= 0) {
       handlers[idx] = ourHandler
     } else {
@@ -135,6 +175,17 @@ export function runInstall(_args: string[] = [], opts: InstallOptions = {}): num
   upsertHook(hooks, 'PreToolUse', 'Bash', `${hookBase} --hook pretooluse`)
   upsertHook(hooks, 'PostToolUse', '*', `${hookBase} --hook posttooluse`)
   upsertHook(hooks, 'SessionStart', 'compact', `${hookBase} --hook sessionstart`)
+
+  // Serena-activate hook — only installed when Serena is detected on this
+  // machine. The hook itself is a noop on machines without Serena (emits
+  // {}), so installing it everywhere would be safe too, but explicit
+  // detection keeps the settings.json clean of hooks the user didn't ask
+  // for. Safe on upgrade: extractHookFlag-based upsert means re-running
+  // install won't duplicate the entry.
+  const serenaProbe = opts.serenaProbe ?? probeSerenaPresence()
+  if (serenaProbe.present) {
+    upsertHook(hooks, 'SessionStart', '', `${hookBase} --hook serena-activate`)
+  }
   settings.hooks = hooks
 
   writeSettings(p, settings)
@@ -151,6 +202,11 @@ export function runInstall(_args: string[] = [], opts: InstallOptions = {}): num
   print('token-optimizer-mcp instalado correctamente.')
   print(`  settings: ${p}`)
   print(`  global:   ${globalDir}`)
+  if (serenaProbe.present) {
+    print(`  serena:   detectado — hook serena-activate registrado en SessionStart`)
+  } else {
+    print(`  serena:   no detectado — hook serena-activate omitido`)
+  }
 
   if (opts.runDoctorAtEnd !== false) {
     print('')
