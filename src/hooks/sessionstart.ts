@@ -13,6 +13,7 @@ import { ensureStorageDir } from '../lib/storage.js'
 import { renderReinjectionMarkdown } from '../services/session-retriever.js'
 import { buildCoachSectionMarkdown } from '../coach/session-section.js'
 import { loadConfig } from '../cli/config.js'
+import { buildQueries } from '../db/queries.js'
 
 export interface SessionStartInput {
   session_id?: string
@@ -71,6 +72,7 @@ export async function runSessionStartHook(
       dbPath = resolveAnalyticsDbPath(projectDir)
     }
     const db = getDb(dbPath)
+    const queries = buildQueries(db)
     const retriever = new SessionRetriever(db)
     const payload = retriever.buildReinjectionPayload(
       sessionId,
@@ -78,6 +80,26 @@ export async function runSessionStartHook(
       opts.budgetTokens ?? 2000,
     )
     markdown = renderReinjectionMarkdown(payload)
+
+    // Serena symbols section — re-inject recently touched symbols so the agent
+    // knows which files were being read before compaction.
+    try {
+      const touches = queries.getRecentSerenaSymbols(sessionId, 15)
+      if (touches.length > 0) {
+        const lines = touches.map(({ tool_name, relative_path, name_path }) => {
+          const symbol = name_path ? ` → \`${name_path}\`` : ''
+          const tool = tool_name.replace('mcp__serena__', '')
+          return `- \`${relative_path}\`${symbol} (${tool})`
+        })
+        const serenaSection =
+          `## Símbolos Serena recientes\n` +
+          `Estos archivos/símbolos fueron leídos antes del compacto:\n\n` +
+          lines.join('\n')
+        markdown = markdown ? `${markdown}\n\n${serenaSection}` : serenaSection
+      }
+    } catch {
+      // Never block on this
+    }
 
     // Coach section (Phase 4.H) — append tips when rules fire
     const cfg = loadConfig(opts.home)

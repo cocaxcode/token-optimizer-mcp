@@ -170,10 +170,25 @@ export function runPostToolUseHook(
           if (shadow) {
             event.tokens_estimated = shadow.output_tokens
             event.estimation_method = shadow.estimation_method
+            event.shadow_delta_tokens = shadow.delta_tokens
           }
         }
       } catch {
         // Shadow errors never block — continue with original estimation
+      }
+    }
+
+    // Log Serena symbol touches for SessionStart:compact re-injection
+    if (SERENA_SHADOW_TOOLS.has(toolName)) {
+      try {
+        const input = parsed.tool_input as Record<string, unknown> | undefined
+        const relPath = typeof input?.relative_path === 'string' ? input.relative_path : null
+        if (relPath) {
+          const namePath = typeof input?.name_path === 'string' ? input.name_path : null
+          queries.insertSerenaTouch(sessionId, toolName, relPath, namePath)
+        }
+      } catch {
+        // Never block on logging
       }
     }
 

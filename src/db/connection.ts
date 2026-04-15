@@ -66,6 +66,13 @@ function migrateLegacyToolCallsSchema(db: DB): void {
   migrate()
 }
 
+/** Add shadow_delta_tokens column to existing DBs that were created before Sprint C. */
+function migrateAddShadowDeltaTokens(db: DB): void {
+  const cols = db.prepare(`PRAGMA table_info('tool_calls')`).all() as Array<{ name: string }>
+  if (cols.some((c) => c.name === 'shadow_delta_tokens')) return // already present
+  db.exec(`ALTER TABLE tool_calls ADD COLUMN shadow_delta_tokens INTEGER`)
+}
+
 export function getDb(dbPath?: string): DB {
   const resolvedPath = dbPath ?? ':memory:'
   if (dbInstance && currentPath === resolvedPath) {
@@ -90,6 +97,7 @@ export function getDb(dbPath?: string): DB {
   db.pragma('foreign_keys = ON')
   db.exec(SCHEMA_SQL)
   migrateLegacyToolCallsSchema(db)
+  migrateAddShadowDeltaTokens(db)
   dbInstance = db
   currentPath = resolvedPath
   return db

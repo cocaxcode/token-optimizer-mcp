@@ -351,3 +351,50 @@ describe('detect-read-over-serena', () => {
     expect(hit!.estimation_method).toBe('estimated_cumulative')
   })
 })
+
+describe('detect-serena-read-cascade', () => {
+  const rule = DETECTION_RULES.find((r) => r.id === 'detect-serena-read-cascade')!
+
+  it('is registered', () => {
+    expect(rule).toBeDefined()
+  })
+
+  it('fires with >=5 find_symbol calls and no overview in last 15', () => {
+    const hit = rule.run(
+      buildCtx({
+        events: makeEvents(5, 'mcp__serena__find_symbol'),
+      }),
+    )
+    expect(hit).not.toBeNull()
+    expect(hit!.rule_id).toBe('detect-serena-read-cascade')
+    expect(hit!.severity).toBe('info')
+  })
+
+  it('does not fire with <5 find_symbol calls', () => {
+    const hit = rule.run(
+      buildCtx({
+        events: makeEvents(4, 'mcp__serena__find_symbol'),
+      }),
+    )
+    expect(hit).toBeNull()
+  })
+
+  it('does not fire when get_symbols_overview is present in window', () => {
+    const events = [
+      ...makeEvents(5, 'mcp__serena__find_symbol'),
+      makeEvent({ tool_name: 'mcp__serena__get_symbols_overview' }),
+    ]
+    const hit = rule.run(buildCtx({ events }))
+    expect(hit).toBeNull()
+  })
+
+  it('only looks at last 15 events', () => {
+    // 10 old find_symbol outside window + 2 new find_symbol inside window
+    const events = [
+      ...makeEvents(2, 'mcp__serena__find_symbol'),
+      ...makeEvents(13, 'Bash'), // fill up the window after the 2 find_symbol
+    ]
+    const hit = rule.run(buildCtx({ events }))
+    expect(hit).toBeNull() // only 2 find_symbol in first 15 slots
+  })
+})

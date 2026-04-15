@@ -191,7 +191,34 @@ export const DETECTION_RULES: readonly DetectionRule[] = [
     },
   },
 
-  // 12. detect-read-over-serena
+  // 12. detect-serena-read-cascade
+  // Fires when the agent makes ≥5 find_symbol calls without a get_symbols_overview
+  // in the same window — suggests starting with an overview first.
+  {
+    id: 'detect-serena-read-cascade',
+    tip_ids: ['use-serena-overview-first'],
+    run(ctx) {
+      const window = ctx.events.slice(0, 15)
+      const findSymbolCount = countMatching(
+        window,
+        (e) => e.tool_name === 'mcp__serena__find_symbol',
+      )
+      if (findSymbolCount < 5) return null
+      const hasOverview = window.some(
+        (e) => e.tool_name === 'mcp__serena__get_symbols_overview',
+      )
+      if (hasOverview) return null
+      return {
+        rule_id: 'detect-serena-read-cascade',
+        tip_ids: ['use-serena-overview-first'],
+        severity: 'info' as DetectionSeverity,
+        evidence: `${findSymbolCount} llamadas find_symbol sin get_symbols_overview en los ultimos 15 eventos.`,
+        estimation_method: ctx.session_token_method,
+      }
+    },
+  },
+
+  // 13. detect-read-over-serena
   {
     id: 'detect-read-over-serena',
     tip_ids: ['prefer-serena-reads'],

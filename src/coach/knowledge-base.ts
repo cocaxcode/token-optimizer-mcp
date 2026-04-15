@@ -238,6 +238,19 @@ export const KNOWLEDGE_BASE: readonly CoachTip[] = [
     detector_id: null,
   },
   {
+    id: 'use-serena-overview-first',
+    title: 'Usa get_symbols_overview antes de find_symbol',
+    description:
+      'Llamar get_symbols_overview una vez da el mapa del archivo. Las llamadas sucesivas find_symbol sin overview previo leen el mismo archivo repetidamente.',
+    savings_estimate: '30-50% menos llamadas Serena por sesion',
+    savings_source: 'internal',
+    how_to_invoke: 'mcp__serena__get_symbols_overview con relative_path antes de find_symbol',
+    when_applicable: 'Al explorar un archivo por primera vez en la sesion',
+    source_type: 'mcp',
+    verified_at: '2026-04-15',
+    detector_id: 'detect-serena-read-cascade',
+  },
+  {
     id: 'use-prompt-caching',
     title: 'Estructura prompts para maximizar cache hits',
     description:

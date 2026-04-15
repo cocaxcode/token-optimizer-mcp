@@ -192,4 +192,44 @@ describe('runPostToolUseHook', () => {
       fs.unlinkSync(tmpFile)
     }
   })
+
+  it('logs serena touch to serena_symbol_touches for find_symbol with relative_path', async () => {
+    const { getDb, closeDb } = await import('../db/connection.js')
+    const { buildQueries } = await import('../db/queries.js')
+    closeDb()
+    const db = getDb(':memory:')
+
+    runPostToolUseHook({
+      stdin: JSON.stringify({
+        session_id: 'sess-touch',
+        tool_name: 'mcp__serena__find_symbol',
+        tool_input: { relative_path: 'src/lib/types.ts', name_path_pattern: 'ToolEvent' },
+        tool_response: '{"result": "[]"}',
+      }),
+      dbPath: ':memory:',
+      writeStdout: false,
+      coachEnabled: false,
+    })
+
+    const queries = buildQueries(db)
+    const rows = queries.getRecentSerenaSymbols('sess-touch', 10)
+    expect(rows.length).toBe(1)
+    expect(rows[0].relative_path).toBe('src/lib/types.ts')
+    closeDb()
+  })
+
+  it('does not log serena touch when relative_path is absent', () => {
+    runPostToolUseHook({
+      stdin: JSON.stringify({
+        session_id: 'sess-notouch',
+        tool_name: 'mcp__serena__find_symbol',
+        tool_input: { name_path_pattern: 'Foo' },
+        tool_response: '{}',
+      }),
+      dbPath: ':memory:',
+      writeStdout: false,
+      coachEnabled: false,
+    })
+    // No assertion needed — just verify no throw
+  })
 })

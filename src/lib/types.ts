@@ -33,6 +33,8 @@ export interface ToolEvent {
   duration_ms: number | null
   estimation_method: EstimationMethod
   created_at: string
+  /** Tokens saved vs reading the full file — populated by shadow measurement (Serena tools only) */
+  shadow_delta_tokens?: number | null
 }
 
 export type BudgetScope = 'session' | 'project'

@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
   tokens_actual INTEGER,
   duration_ms INTEGER,
   estimation_method TEXT,
+  shadow_delta_tokens INTEGER,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
@@ -84,4 +85,19 @@ CREATE TABLE IF NOT EXISTS rtk_rewrites (
 
 CREATE INDEX IF NOT EXISTS idx_rtk_rewrites_lookup
   ON rtk_rewrites(session_id, command_hash, created_at DESC);
+
+-- Serena symbol touches. PostToolUse writes a row for each Serena read tool call
+-- that includes a relative_path, so SessionStart:compact can re-inject relevant
+-- symbols when context is reset.
+CREATE TABLE IF NOT EXISTS serena_symbol_touches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  tool_name TEXT NOT NULL,
+  relative_path TEXT NOT NULL,
+  name_path TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_serena_symbol_touches_session
+  ON serena_symbol_touches(session_id, created_at DESC);
 `

@@ -27,8 +27,9 @@ export function buildQueries(db: DB) {
   const insertToolCall = db.prepare(
     `INSERT INTO tool_calls (
       session_id, tool_name, source, output_bytes,
-      tokens_estimated, tokens_actual, duration_ms, estimation_method, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      tokens_estimated, tokens_actual, duration_ms, estimation_method,
+      shadow_delta_tokens, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
 
   const getToolCallsSince = db.prepare(
@@ -79,10 +80,24 @@ export function buildQueries(db: DB) {
         e.tokens_actual,
         e.duration_ms,
         e.estimation_method,
+        e.shadow_delta_tokens ?? null,
         e.created_at,
       )
     }
   })
+
+  // ── serena_symbol_touches ──
+  const insertSerenaTouch = db.prepare(
+    `INSERT INTO serena_symbol_touches (session_id, tool_name, relative_path, name_path)
+     VALUES (?, ?, ?, ?)`,
+  )
+
+  const getRecentSerenaSymbols = db.prepare(
+    `SELECT tool_name, relative_path, name_path, created_at
+     FROM serena_symbol_touches
+     WHERE session_id = ?
+     ORDER BY created_at DESC LIMIT ?`,
+  )
 
   // ── meta ──
   // ── rtk_rewrites ──
@@ -155,6 +170,7 @@ export function buildQueries(db: DB) {
         event.tokens_actual,
         event.duration_ms,
         event.estimation_method,
+        event.shadow_delta_tokens ?? null,
         event.created_at,
       )
     },
@@ -235,6 +251,27 @@ export function buildQueries(db: DB) {
     purgeStaleRtkMarks(): number {
       const info = purgeStaleRtkMarks.run()
       return info.changes as number
+    },
+
+    // serena symbol touches
+    insertSerenaTouch(
+      sessionId: string,
+      toolName: string,
+      relativePath: string,
+      namePath: string | null,
+    ) {
+      insertSerenaTouch.run(sessionId, toolName, relativePath, namePath)
+    },
+    getRecentSerenaSymbols(
+      sessionId: string,
+      limit: number,
+    ): { tool_name: string; relative_path: string; name_path: string | null; created_at: string }[] {
+      return getRecentSerenaSymbols.all(sessionId, limit) as {
+        tool_name: string
+        relative_path: string
+        name_path: string | null
+        created_at: string
+      }[]
     },
   }
 }
