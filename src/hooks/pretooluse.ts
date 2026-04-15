@@ -124,7 +124,7 @@ export function runPreToolUseHook(
             if (/^[A-Za-z]:\//.test(bashPath)) {
               bashPath = '/' + bashPath[0].toLowerCase() + bashPath.slice(2)
             }
-            finalCmd = `"${bashPath}"${finalCmd.slice(3)}`
+            finalCmd = `"${bashPath}" ${finalCmd.slice('rtk '.length)}`
           }
           decision.updatedInput = { command: finalCmd }
           decision.permissionDecision = 'allow'

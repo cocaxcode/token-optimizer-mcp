@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import fs from 'node:fs'
 import path from 'node:path'
 import { mkdtemp } from 'node:fs/promises'
@@ -8,6 +8,15 @@ import { closeDb, getDb } from '../db/connection.js'
 import { BudgetManager } from '../services/budget-manager.js'
 import { seedAnalyticsDb, makeEvent } from './helpers.js'
 import { projectHash } from '../lib/paths.js'
+
+vi.mock('../lib/rtk-bridge.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../lib/rtk-bridge.js')>()
+  return {
+    ...actual,
+    findRtkBinary: vi.fn(() => null),
+    rtkRewrite: vi.fn(() => null),
+  }
+})
 
 describe('runPreToolUseHook', () => {
   const PROJECT_DIR = process.cwd()
@@ -136,11 +145,8 @@ describe('runPreToolUseHook', () => {
     expect(decision).toEqual({})
   })
 
-  it('does not set updatedInput (RTK rewrite disabled in hook)', () => {
-    // RTK rewrite was removed from the hook because the bash subprocess used by
-    // Claude Code has a limited PATH — git/npm are not found when RTK tries to
-    // exec them, breaking commands. RTK is applied by the agent writing
-    // `rtk <cmd>` explicitly per CLAUDE.md golden rule, not via hook rewrite.
+  it('does not set updatedInput when RTK binary is not found', () => {
+    // findRtkBinary is mocked to return null at the top of this file
     const decision = runPreToolUseHook({
       stdin: hookInput({ tool_input: { command: 'git status' } }),
       dbPath: ':memory:',
@@ -151,16 +157,44 @@ describe('runPreToolUseHook', () => {
     expect(decision.permissionDecision).toBeUndefined()
   })
 
-  it('does not set updatedInput even when rtkPath option is passed', () => {
-    // rtkPath kept in RunPreToolUseOptions for API compat but is no longer used
+  it('does not set updatedInput when rtkPath is explicitly null', () => {
     const decision = runPreToolUseHook({
       stdin: hookInput({ tool_input: { command: 'ls -la' } }),
       dbPath: ':memory:',
       projectDir: PROJECT_DIR,
       writeStdout: false,
-      rtkPath: '/some/fake/rtk',
+      rtkPath: null,
     })
     expect(decision.updatedInput).toBeUndefined()
+  })
+
+  it('rewrites command via RTK and produces no double space (slice fix)', async () => {
+    // Mock rtkRewrite to return a successful rewrite for 'git status'
+    const { rtkRewrite } = await import('../lib/rtk-bridge.js')
+    vi.mocked(rtkRewrite).mockReturnValueOnce({
+      rewritten: 'rtk git status',
+      exitCode: 3,
+      success: true,
+    })
+
+    const FAKE_RTK = '/c/tools/rtk/rtk.exe'
+    const decision = runPreToolUseHook({
+      stdin: hookInput({ tool_input: { command: 'git status' } }),
+      dbPath: ':memory:',
+      projectDir: PROJECT_DIR,
+      writeStdout: false,
+      rtkPath: FAKE_RTK,
+    })
+
+    expect(decision.updatedInput).toBeDefined()
+    expect(decision.permissionDecision).toBe('allow')
+
+    const cmd = decision.updatedInput!.command
+    // Ensure no double space between binary path and arguments
+    expect(cmd).not.toMatch(/"\s{2,}/)    // no double space inside quotes
+    expect(cmd).not.toMatch(/"\s{2,}git/) // no double space before 'git'
+    // Should be: "/c/tools/rtk/rtk.exe" git status
+    expect(cmd).toBe('"/c/tools/rtk/rtk.exe" git status')
   })
 
   it('writes decision JSON to stdout when writeStdout=true', () => {

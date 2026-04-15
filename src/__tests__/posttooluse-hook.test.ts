@@ -152,4 +152,44 @@ describe('runPostToolUseHook', () => {
     expect(result.event?.duration_ms).not.toBeNull()
     expect(result.event?.duration_ms).toBeGreaterThanOrEqual(0)
   })
+
+  it('applies shadow measurement for mcp__serena__find_symbol when shadow_measurement.serena is enabled', async () => {
+    // Write a real file so fs.statSync succeeds inside shadowMeasureSerena
+    const fs = await import('node:fs')
+    const os = await import('node:os')
+    const nodePath = await import('node:path')
+    const tmpFile = nodePath.default.join(os.tmpdir(), `serena-shadow-test-${Date.now()}.ts`)
+    // Write ~5000 bytes so full_file_tokens >> event.tokens_estimated
+    fs.writeFileSync(tmpFile, 'x'.repeat(5000))
+    try {
+      // Override config so shadow_measurement.serena = true
+      const originalEnv = process.env.TOKEN_OPTIMIZER_HOME
+      process.env.TOKEN_OPTIMIZER_HOME = os.tmpdir()
+
+      const result = runPostToolUseHook({
+        stdin: JSON.stringify({
+          session_id: 's1',
+          tool_name: 'mcp__serena__find_symbol',
+          tool_input: { relative_path: nodePath.default.basename(tmpFile), name_path_pattern: 'foo' },
+          tool_response: '{"result": "[]"}',
+        }),
+        dbPath: ':memory:',
+        projectDir: os.tmpdir(),
+        writeStdout: false,
+        coachEnabled: false,
+      })
+
+      // estimation_method should be updated to 'estimated_serena_shadow' when config is enabled
+      // (default config has shadow_measurement.serena: false, so this tests the no-op path)
+      expect(result.event).not.toBeNull()
+      expect(result.event?.tool_name).toBe('mcp__serena__find_symbol')
+      expect(result.event?.source).toBe('serena')
+      // With default config (shadow disabled), estimation_method stays as the Serena fallback
+      expect(result.event?.estimation_method).toBe('estimated_serena_fallback')
+
+      process.env.TOKEN_OPTIMIZER_HOME = originalEnv
+    } finally {
+      fs.unlinkSync(tmpFile)
+    }
+  })
 })

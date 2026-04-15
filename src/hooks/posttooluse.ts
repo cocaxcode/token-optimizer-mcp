@@ -22,6 +22,14 @@ import { buildCoachHintSync } from '../coach/session-section.js'
 import { loadConfig } from '../cli/config.js'
 import { hashCommand } from '../lib/command-hash.js'
 import type { ToolEvent, DetectionSeverity, EventSource } from '../lib/types.js'
+import { shadowMeasureSerena } from '../services/serena-shadow.js'
+import path from 'node:path'
+
+// Serena tools that read a single file and support shadow measurement
+const SERENA_SHADOW_TOOLS = new Set([
+  'mcp__serena__find_symbol',
+  'mcp__serena__get_symbols_overview',
+])
 
 export interface PostToolUseInput {
   session_id?: string
@@ -142,12 +150,36 @@ export function runPostToolUseHook(
       }
     }
 
+    // Shadow measurement: if this is a Serena read tool with a relative_path,
+    // measure how many tokens were saved vs reading the full file.
+    // Updates estimation_method so reports reflect Serena's actual contribution.
+    const cfg = loadConfig(opts.home)
+    if (SERENA_SHADOW_TOOLS.has(toolName) && cfg.shadow_measurement.serena) {
+      try {
+        const input = parsed.tool_input as Record<string, unknown> | undefined
+        const relPath = typeof input?.relative_path === 'string' ? input.relative_path : null
+        if (relPath) {
+          const projectDir = opts.projectDir ?? resolveProjectDir()
+          const absPath = path.resolve(projectDir, relPath)
+          const shadow = shadowMeasureSerena(
+            { file_path: absPath, tokens_estimated: event.tokens_estimated, tool_name: toolName },
+            true,
+          )
+          if (shadow) {
+            event.tokens_estimated = shadow.output_tokens
+            event.estimation_method = shadow.estimation_method
+          }
+        }
+      } catch {
+        // Shadow errors never block — continue with original estimation
+      }
+    }
+
     const queue = new AnalyticsQueue(db)
     queue.enqueue(event)
     queue.flush()
 
     // Phase 4.H — throttled coach surfacing
-    const cfg = loadConfig(opts.home)
     const coachEnabled =
       opts.coachEnabled ?? (cfg.coach.enabled && cfg.coach.auto_surface)
     if (coachEnabled) {

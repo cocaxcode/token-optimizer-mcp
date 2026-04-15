@@ -106,16 +106,7 @@ export const DETECTION_RULES: readonly DetectionRule[] = [
     },
   },
 
-  // 6. detect-unused-mcp-servers (stub — requires cross-ref with schema-measurer)
-  {
-    id: 'detect-unused-mcp-servers',
-    tip_ids: ['use-mcp-prune'],
-    run() {
-      return null
-    },
-  },
-
-  // 7. detect-clear-opportunity
+  // 6. detect-clear-opportunity (was #7 — detect-unused-mcp-servers stub removed)
   {
     id: 'detect-clear-opportunity',
     tip_ids: ['use-clear-rename-resume'],
