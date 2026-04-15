@@ -4,7 +4,6 @@
 
 import fs from 'node:fs'
 import { getDb } from '../db/connection.js'
-import { buildQueries } from '../db/queries.js'
 import { BudgetManager } from '../services/budget-manager.js'
 import { estimateTokensFast } from '../lib/token-estimator.js'
 import {
@@ -13,8 +12,6 @@ import {
   projectHash,
 } from '../lib/paths.js'
 import { ensureStorageDir } from '../lib/storage.js'
-import { findRtkBinary, rtkRewrite } from '../lib/rtk-bridge.js'
-import { hashCommand } from '../lib/command-hash.js'
 
 export interface PreToolUseInput {
   session_id?: string
@@ -79,7 +76,12 @@ export function runPreToolUseHook(
 
   const decision: PreToolUseDecision = {}
 
-  // ── Step 1: Budget check ──
+  // ── Budget check ──
+  // NOTE: RTK rewrite was removed. The hook subprocess runs under /usr/bin/bash
+  // which has a limited PATH — git, npm and other Windows tools are not found
+  // when RTK tries to exec them, breaking normal commands. RTK integration in
+  // Claude Code works best when the agent writes `rtk <cmd>` explicitly in its
+  // Bash calls (per CLAUDE.md golden rule), rather than via hook rewrite.
   try {
     const projectDir = opts.projectDir ?? resolveProjectDir()
     let dbPath: string
@@ -102,65 +104,11 @@ export function runPreToolUseHook(
       }
     }
   } catch {
-    // Budget errors never block — continue to RTK
-  }
-
-  // ── Step 2: RTK rewrite (if available) ──
-  try {
-    const rtkPath =
-      opts.rtkPath !== undefined ? opts.rtkPath : findRtkBinary()
-    if (rtkPath && command.trim()) {
-      const result = rtkRewrite(command, rtkPath)
-      if (result) {
-        if ((result.exitCode === 0 || result.exitCode === 3) && result.rewritten) {
-          // RTK always outputs "rtk <args>" using the short name, but in
-          // Git Bash (Windows) "rtk" may not be on the shell PATH. Replace
-          // the short name with the absolute binary path we already found so
-          // bash can execute it regardless of PATH configuration.
-          // Convert Windows path to Git Bash Unix-style: C:\tools\rtk\rtk.exe → /c/tools/rtk/rtk.exe
-          let finalCmd = result.rewritten
-          if ((finalCmd.startsWith('rtk ') || finalCmd === 'rtk') && rtkPath) {
-            let bashPath = rtkPath.replace(/\\/g, '/')
-            if (/^[A-Za-z]:\//.test(bashPath)) {
-              bashPath = '/' + bashPath[0].toLowerCase() + bashPath.slice(2)
-            }
-            finalCmd = `"${bashPath}"${finalCmd.slice(3)}`
-          }
-          decision.updatedInput = { command: finalCmd }
-          decision.permissionDecision = 'allow'
-
-          // Stamp a mark in the DB so PostToolUse can reclassify this event as source=rtk.
-          try {
-            const projectDir = opts.projectDir ?? resolveProjectDir()
-            const dbPath =
-              opts.dbPath !== undefined
-                ? opts.dbPath
-                : (ensureStorageDir(projectDir), resolveAnalyticsDbPath(projectDir))
-            const db = getDb(dbPath)
-            const queries = buildQueries(db)
-            queries.insertRtkRewrite(sessionId, hashCommand(command), result.rewritten)
-            queries.purgeStaleRtkMarks()
-          } catch {
-            // swallow — losing a mark only hurts the stat, not the user
-          }
-        }
-        // Exit 1 (no rewrite) or 2 (deny): passthrough, no updatedInput
-      }
-    }
-  } catch {
-    // RTK errors never block — continue without rewrite
+    // Budget errors never block
   }
 
   if (opts.writeStdout !== false) {
-    // updatedInput + permissionDecision at ROOT level (not inside hookSpecificOutput)
-    // so Claude Code honors them. additionalContext was already at root level.
     const output: Record<string, unknown> = {}
-    if (decision.updatedInput) {
-      output.updatedInput = decision.updatedInput
-    }
-    if (decision.permissionDecision) {
-      output.permissionDecision = decision.permissionDecision
-    }
     if (decision.additionalContext) {
       output.additionalContext = decision.additionalContext
     }
