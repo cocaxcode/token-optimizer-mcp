@@ -20,7 +20,8 @@ import { buildQueries } from '../db/queries.js'
 import { postToXray } from '../services/xray-client.js'
 import { buildCoachHintSync } from '../coach/session-section.js'
 import { loadConfig } from '../cli/config.js'
-import type { ToolEvent, DetectionSeverity } from '../lib/types.js'
+import { hashCommand } from '../lib/command-hash.js'
+import type { ToolEvent, DetectionSeverity, EventSource } from '../lib/types.js'
 
 export interface PostToolUseInput {
   session_id?: string
@@ -93,9 +94,11 @@ export function runPostToolUseHook(
   const toolName = parsed.tool_name ?? 'unknown'
   const outputBytes = extractOutputBytes(parsed.tool_response)
 
-  const source = classifySource(toolName, parsed.tool_input)
-  const estimationMethod = tagEstimationMethod(source)
+  let source: EventSource = classifySource(toolName, parsed.tool_input)
+  let estimationMethod = tagEstimationMethod(source)
 
+  // Build the event first; we may upgrade `source` to 'rtk' below if the
+  // PreToolUse hook left an rtk rewrite mark for this exact Bash command.
   const event: ToolEvent = {
     session_id: sessionId,
     tool_name: toolName,
@@ -121,6 +124,24 @@ export function runPostToolUseHook(
     const db = getDb(dbPath)
     const queries = buildQueries(db)
     queries.insertSession(sessionId, projectHash(projectDir))
+
+    // If PreToolUse rewrote this Bash via rtk, it left a mark we can consume
+    // now to reclassify the event. Only applies to Bash calls — every other
+    // tool skips the DB lookup entirely.
+    if (toolName === 'Bash' && source === 'builtin') {
+      const rawInput = parsed.tool_input as { command?: string } | undefined
+      const command = rawInput?.command
+      if (typeof command === 'string' && command.length > 0) {
+        const rewritten = queries.consumeRtkRewrite(sessionId, hashCommand(command))
+        if (rewritten) {
+          source = 'rtk'
+          estimationMethod = 'measured_rtk_rewrite'
+          event.source = 'rtk'
+          event.estimation_method = 'measured_rtk_rewrite'
+        }
+      }
+    }
+
     const queue = new AnalyticsQueue(db)
     queue.enqueue(event)
     queue.flush()

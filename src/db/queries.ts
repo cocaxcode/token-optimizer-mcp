@@ -85,6 +85,25 @@ export function buildQueries(db: DB) {
   })
 
   // ── meta ──
+  // ── rtk_rewrites ──
+  const insertRtkRewrite = db.prepare(
+    `INSERT INTO rtk_rewrites (session_id, command_hash, rewritten_to) VALUES (?, ?, ?)`,
+  )
+  // Consume (look up AND delete) the most recent matching mark. If the PostToolUse
+  // hook finds a mark for this (session, command_hash), the call was rewritten by
+  // rtk in PreToolUse and must be reclassified as source=rtk. We bound the lookup
+  // to 60 s so stale marks never poison future events.
+  const findRtkMark = db.prepare(
+    `SELECT id, rewritten_to FROM rtk_rewrites
+     WHERE session_id = ? AND command_hash = ?
+       AND created_at >= datetime('now', '-60 seconds')
+     ORDER BY id DESC LIMIT 1`,
+  )
+  const deleteRtkMarkById = db.prepare(`DELETE FROM rtk_rewrites WHERE id = ?`)
+  const purgeStaleRtkMarks = db.prepare(
+    `DELETE FROM rtk_rewrites WHERE created_at < datetime('now', '-60 seconds')`,
+  )
+
   const upsertMetaCounter = db.prepare(
     `INSERT INTO meta (key, value) VALUES (?, '1')
      ON CONFLICT(key) DO UPDATE SET value = CAST(value AS INTEGER) + 1`,
@@ -194,6 +213,28 @@ export function buildQueries(db: DB) {
     },
     insertBudgetEvent(budgetId: number, eventType: string, tokens: number | null) {
       insertBudgetEvent.run(budgetId, eventType, tokens)
+    },
+
+    // rtk rewrites
+    insertRtkRewrite(sessionId: string, commandHash: string, rewrittenTo: string) {
+      insertRtkRewrite.run(sessionId, commandHash, rewrittenTo)
+    },
+    /**
+     * Look up and consume an RTK rewrite mark. Returns the rewritten command if
+     * there was a mark for this (session, hash) within the last 60 s, or null.
+     * The row is deleted on match so it cannot be double-consumed.
+     */
+    consumeRtkRewrite(sessionId: string, commandHash: string): string | null {
+      const row = findRtkMark.get(sessionId, commandHash) as
+        | { id: number; rewritten_to: string }
+        | undefined
+      if (!row) return null
+      deleteRtkMarkById.run(row.id)
+      return row.rewritten_to
+    },
+    purgeStaleRtkMarks(): number {
+      const info = purgeStaleRtkMarks.run()
+      return info.changes as number
     },
   }
 }

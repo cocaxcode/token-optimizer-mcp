@@ -4,6 +4,7 @@
 
 import fs from 'node:fs'
 import { getDb } from '../db/connection.js'
+import { buildQueries } from '../db/queries.js'
 import { BudgetManager } from '../services/budget-manager.js'
 import { estimateTokensFast } from '../lib/token-estimator.js'
 import {
@@ -13,6 +14,7 @@ import {
 } from '../lib/paths.js'
 import { ensureStorageDir } from '../lib/storage.js'
 import { findRtkBinary, rtkRewrite } from '../lib/rtk-bridge.js'
+import { hashCommand } from '../lib/command-hash.js'
 
 export interface PreToolUseInput {
   session_id?: string
@@ -124,6 +126,23 @@ export function runPreToolUseHook(
           //   to honor updatedInput, so we always set "allow"
           decision.updatedInput = { command: result.rewritten }
           decision.permissionDecision = 'allow'
+
+          // Stamp a mark in the DB so PostToolUse can reclassify this event
+          // as source=rtk. PostToolUse only sees the original tool_input, so
+          // without this mark the hit would be mis-tagged as source=builtin.
+          try {
+            const projectDir = opts.projectDir ?? resolveProjectDir()
+            const dbPath =
+              opts.dbPath !== undefined
+                ? opts.dbPath
+                : (ensureStorageDir(projectDir), resolveAnalyticsDbPath(projectDir))
+            const db = getDb(dbPath)
+            const queries = buildQueries(db)
+            queries.insertRtkRewrite(sessionId, hashCommand(command), result.rewritten)
+            queries.purgeStaleRtkMarks()
+          } catch {
+            // swallow — losing a mark only hurts the stat, not the user
+          }
         }
         // Exit 1 (no rewrite) or 2 (deny): passthrough, no updatedInput
       }

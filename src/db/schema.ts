@@ -68,4 +68,20 @@ CREATE TABLE IF NOT EXISTS meta (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+
+-- Pending RTK rewrites. PreToolUse writes a row when it rewrites a Bash command
+-- via rtk rewrite; PostToolUse consumes it to reclassify the event as source=rtk.
+-- The PostToolUse hook only sees the ORIGINAL command (what Claude asked for),
+-- not the command Claude Code actually executed after PreToolUse mutation. This
+-- table bridges the gap so stats reflect the real RTK activity.
+CREATE TABLE IF NOT EXISTS rtk_rewrites (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  command_hash TEXT NOT NULL,
+  rewritten_to TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_rtk_rewrites_lookup
+  ON rtk_rewrites(session_id, command_hash, created_at DESC);
 `
