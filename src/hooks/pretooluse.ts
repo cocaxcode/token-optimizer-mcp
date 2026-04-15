@@ -131,7 +131,11 @@ export function runPreToolUseHook(
           // bash can execute it regardless of PATH configuration.
           let finalCmd = result.rewritten
           if ((finalCmd.startsWith('rtk ') || finalCmd === 'rtk') && rtkPath) {
-            const bashPath = rtkPath.replace(/\\/g, '/')
+            // Convert Windows path to Git Bash Unix-style: C:\tools\rtk\rtk.exe → /c/tools/rtk/rtk.exe
+            let bashPath = rtkPath.replace(/\\/g, '/')
+            if (/^[A-Za-z]:\//.test(bashPath)) {
+              bashPath = '/' + bashPath[0].toLowerCase() + bashPath.slice(2)
+            }
             finalCmd = `"${bashPath}"${finalCmd.slice(3)}`
           }
           decision.updatedInput = { command: finalCmd }
