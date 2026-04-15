@@ -190,11 +190,8 @@ describe('runPreToolUseHook', () => {
     expect(decision.permissionDecision).toBe('allow')
 
     const cmd = decision.updatedInput!.command
-    // Ensure no double space between binary path and arguments
-    expect(cmd).not.toMatch(/"\s{2,}/)    // no double space inside quotes
-    expect(cmd).not.toMatch(/"\s{2,}git/) // no double space before 'git'
-    // Should be: "/c/tools/rtk/rtk.exe" git status
-    expect(cmd).toBe('"/c/tools/rtk/rtk.exe" git status')
+    // Hook uses rewritten command as-is ("rtk <args>") — rtk is on npm PATH
+    expect(cmd).toBe('rtk git status')
   })
 
   it('writes decision JSON to stdout when writeStdout=true', () => {

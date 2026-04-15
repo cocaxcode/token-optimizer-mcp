@@ -113,20 +113,10 @@ export function runPreToolUseHook(
       const result = rtkRewrite(command, rtkPath)
       if (result) {
         if ((result.exitCode === 0 || result.exitCode === 3) && result.rewritten) {
-          // RTK always outputs "rtk <args>" using the short name, but in
-          // Git Bash (Windows) "rtk" may not be on the shell PATH. Replace
-          // the short name with the absolute binary path we already found so
-          // bash can execute it regardless of PATH configuration.
-          // Convert Windows path to Git Bash Unix-style: C:\tools\rtk\rtk.exe → /c/tools/rtk/rtk.exe
-          let finalCmd = result.rewritten
-          if ((finalCmd.startsWith('rtk ') || finalCmd === 'rtk') && rtkPath) {
-            let bashPath = rtkPath.replace(/\\/g, '/')
-            if (/^[A-Za-z]:\//.test(bashPath)) {
-              bashPath = '/' + bashPath[0].toLowerCase() + bashPath.slice(2)
-            }
-            finalCmd = `"${bashPath}" ${finalCmd.slice('rtk '.length)}`
-          }
-          decision.updatedInput = { command: finalCmd }
+          // Use the rewritten command as-is ("rtk <args>") — rtk is on the
+          // npm global PATH in Git Bash, so the short name works and RTK's
+          // own stats tracking (rtk gain) is preserved.
+          decision.updatedInput = { command: result.rewritten }
           decision.permissionDecision = 'allow'
 
           // Stamp a mark in the DB so PostToolUse can reclassify this event as source=rtk.
