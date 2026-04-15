@@ -13,16 +13,23 @@ describe('runReport', () => {
   const captured: string[] = []
   const print = (m: string) => captured.push(m)
 
+  let prevHome: string | undefined
+
   beforeEach(async () => {
     cwd = await mkdtemp(path.join(tmpdir(), 'tompx-report-'))
     // Make it resolve as project dir by adding a package.json
     fs.writeFileSync(path.join(cwd, 'package.json'), '{"name":"test"}')
+    // Isolate from the real user's global DB
+    prevHome = process.env.TOKEN_OPTIMIZER_HOME
+    process.env.TOKEN_OPTIMIZER_HOME = path.join(cwd, '.token-optimizer')
     captured.length = 0
     closeDb()
   })
 
   afterEach(() => {
     closeDb()
+    if (prevHome === undefined) delete process.env.TOKEN_OPTIMIZER_HOME
+    else process.env.TOKEN_OPTIMIZER_HOME = prevHome
     fs.rmSync(cwd, { recursive: true, force: true })
   })
 

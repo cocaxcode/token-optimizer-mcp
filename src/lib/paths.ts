@@ -34,12 +34,29 @@ export function resolveStorageDir(projectDir: string): string {
   return path.join(projectDir, '.token-optimizer')
 }
 
-export function resolveAnalyticsDbPath(projectDir: string): string {
-  return path.join(resolveStorageDir(projectDir), 'analytics.db')
+/**
+ * Path to the analytics DB. v0.4.7+: always returns the global DB under ~/.token-optimizer/
+ * so hooks, CLI and MCP tools share a single source of truth regardless of CWD.
+ * Per-project filtering is still available via `sessions.project_hash`.
+ *
+ * The `projectDir` argument is kept for backward compatibility with existing callers
+ * and tests (tests pass an explicit `dbPath` bypassing this function entirely).
+ */
+export function resolveAnalyticsDbPath(_projectDir: string): string {
+  return path.join(resolveGlobalDir(), 'analytics.db')
 }
 
 export function resolveGlobalDir(): string {
+  // TOKEN_OPTIMIZER_HOME overrides the default for tests and multi-user setups.
+  const override = process.env.TOKEN_OPTIMIZER_HOME
+  if (override && override.trim().length > 0) return override
   return path.join(os.homedir(), '.token-optimizer')
+}
+
+export function ensureGlobalStorageDir(): string {
+  const dir = resolveGlobalDir()
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+  return dir
 }
 
 export function projectHash(projectDir: string): string {

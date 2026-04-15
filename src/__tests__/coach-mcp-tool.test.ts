@@ -23,10 +23,10 @@ describe('coach_tips MCP tool', () => {
     expect(names).toContain('coach_tips')
   })
 
-  it('returns JSON with required top-level fields', async () => {
+  it('returns JSON with required top-level fields (verbose)', async () => {
     const result = (await ctx.client.callTool({
       name: 'coach_tips',
-      arguments: { session_id: 'sess-1' },
+      arguments: { session_id: 'sess-1', verbose: true },
     })) as ToolResult
     expect(result.isError).toBeFalsy()
     const payload = JSON.parse(result.content[0].text) as Record<string, unknown>
@@ -37,10 +37,24 @@ describe('coach_tips MCP tool', () => {
     expect(payload).toHaveProperty('last_computed_at')
   })
 
-  it('known_tricks includes 18+ tips', async () => {
+  it('compact mode (default) omits known_tricks and reference_data', async () => {
     const result = (await ctx.client.callTool({
       name: 'coach_tips',
-      arguments: {},
+      arguments: { session_id: 'sess-1' },
+    })) as ToolResult
+    expect(result.isError).toBeFalsy()
+    const payload = JSON.parse(result.content[0].text) as Record<string, unknown>
+    expect(payload).toHaveProperty('current')
+    expect(payload).toHaveProperty('context')
+    expect(payload).toHaveProperty('last_computed_at')
+    expect(payload).not.toHaveProperty('known_tricks')
+    expect(payload).not.toHaveProperty('reference_data')
+  })
+
+  it('verbose known_tricks includes 18+ tips', async () => {
+    const result = (await ctx.client.callTool({
+      name: 'coach_tips',
+      arguments: { verbose: true },
     })) as ToolResult
     const payload = JSON.parse(result.content[0].text) as {
       known_tricks: Array<{ id: string }>
@@ -48,10 +62,10 @@ describe('coach_tips MCP tool', () => {
     expect(payload.known_tricks.length).toBeGreaterThanOrEqual(18)
   })
 
-  it('reference_data has 5 rows tagged reference_measured', async () => {
+  it('verbose reference_data has 5 rows tagged reference_measured', async () => {
     const result = (await ctx.client.callTool({
       name: 'coach_tips',
-      arguments: {},
+      arguments: { verbose: true },
     })) as ToolResult
     const payload = JSON.parse(result.content[0].text) as {
       reference_data: Array<{ estimation_method: string }>
