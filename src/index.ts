@@ -6,11 +6,15 @@ import { runPreToolUseHook } from './hooks/pretooluse.js'
 import { runSerenaActivateHookFromCli } from './hooks/serena-activate.js'
 import { runSessionStartHook } from './hooks/sessionstart.js'
 
+import { createRequire } from 'node:module'
+const _require = createRequire(import.meta.url)
+const _pkg = _require('../package.json') as { version: string }
+
 const args = process.argv.slice(2)
 
 function printUsage(): void {
   console.error(
-    'token-optimizer-mcp v0.1.0 — use --mcp, --hook <pretooluse|posttooluse|sessionstart|serena-activate>, or a subcommand',
+    `token-optimizer-mcp v${_pkg.version} — use --mcp, --hook <pretooluse|posttooluse|sessionstart|serena-activate>, or a subcommand`,
   )
 }
 
@@ -20,6 +24,11 @@ if (args.length === 0) {
 }
 
 const first = args[0]
+
+if (first === '--version' || first === '-v') {
+  console.log(_pkg.version)
+  process.exit(0)
+}
 
 if (first === '--hook') {
   const kind = args[1]
