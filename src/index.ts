@@ -3,13 +3,14 @@
 
 import { runPostToolUseHook } from './hooks/posttooluse.js'
 import { runPreToolUseHook } from './hooks/pretooluse.js'
+import { runSerenaActivateHookFromCli } from './hooks/serena-activate.js'
 import { runSessionStartHook } from './hooks/sessionstart.js'
 
 const args = process.argv.slice(2)
 
 function printUsage(): void {
   console.error(
-    'token-optimizer-mcp v0.1.0 — use --mcp, --hook <pretooluse|posttooluse|sessionstart>, or a subcommand',
+    'token-optimizer-mcp v0.1.0 — use --mcp, --hook <pretooluse|posttooluse|sessionstart|serena-activate>, or a subcommand',
   )
 }
 
@@ -33,6 +34,10 @@ if (first === '--hook') {
       break
     case 'sessionstart':
       await runSessionStartHook()
+      process.exit(0)
+      break
+    case 'serena-activate':
+      runSerenaActivateHookFromCli()
       process.exit(0)
       break
     default:
