@@ -106,6 +106,7 @@ export function rtkRewrite(
       encoding: 'utf8',
       timeout: timeoutMs,
       windowsHide: true,
+      stdio: ['ignore', 'pipe', 'ignore'],
     })
     // spawnSync sets result.error on ENOENT / EACCES / timeout
     if (result.error) return null

@@ -124,7 +124,17 @@ export function runPreToolUseHook(
           // Exit 0: rewrite + auto-allow
           // Exit 3: rewrite + ask — but Claude Code needs permissionDecision
           //   to honor updatedInput, so we always set "allow"
-          decision.updatedInput = { command: result.rewritten }
+          //
+          // RTK always outputs "rtk <args>" using the short name, but in
+          // Git Bash (Windows) "rtk" may not be on the shell PATH. Replace
+          // the short name with the absolute binary path we already found so
+          // bash can execute it regardless of PATH configuration.
+          let finalCmd = result.rewritten
+          if ((finalCmd.startsWith('rtk ') || finalCmd === 'rtk') && rtkPath) {
+            const bashPath = rtkPath.replace(/\\/g, '/')
+            finalCmd = `"${bashPath}"${finalCmd.slice(3)}`
+          }
+          decision.updatedInput = { command: finalCmd }
           decision.permissionDecision = 'allow'
 
           // Stamp a mark in the DB so PostToolUse can reclassify this event
