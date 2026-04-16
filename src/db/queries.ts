@@ -81,6 +81,7 @@ export function buildQueries(db: DB) {
         e.duration_ms,
         e.estimation_method,
         e.shadow_delta_tokens ?? null,
+        e.command_preview ?? null,
         e.created_at,
       )
     }
