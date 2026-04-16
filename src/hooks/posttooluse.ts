@@ -59,6 +59,22 @@ function extractOutputChars(response: unknown): number {
   }
 }
 
+// Priority-ordered field names to extract a meaningful preview per tool type
+const PREVIEW_FIELDS = ['command', 'file_path', 'pattern', 'relative_path', 'name_path', 'path']
+
+function extractCommandPreview(toolName: string, input: unknown): string | undefined {
+  if (input == null || typeof input !== 'object') return undefined
+  const obj = input as Record<string, unknown>
+  for (const field of PREVIEW_FIELDS) {
+    const val = obj[field]
+    if (typeof val === 'string' && val.trim()) {
+      const raw = val.trim()
+      return raw.length > 100 ? raw.slice(0, 100) + '…' : raw
+    }
+  }
+  return undefined
+}
+
 export interface RunPostToolUseOptions {
   stdin?: string
   dbPath?: string
@@ -225,11 +241,13 @@ export function runPostToolUseHook(
   // Enrich event with project context so xray can group by project
   try {
     const projDir = opts.projectDir ?? resolveProjectDir()
+    const commandPreview = extractCommandPreview(toolName, parsed.tool_input)
     const enriched: Record<string, unknown> = {
       ...event,
       project_path: projDir,
       project_name: projDir.split(/[\\/]/).filter(Boolean).pop() ?? 'unknown',
       project_hash: projectHash(projDir),
+      ...(commandPreview !== undefined && { command_preview: commandPreview }),
     }
     void postToXray(enriched).catch(() => { /* swallow */ })
   } catch {
