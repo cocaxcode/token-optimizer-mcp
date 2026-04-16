@@ -62,7 +62,7 @@ function extractOutputChars(response: unknown): number {
 // Priority-ordered field names to extract a meaningful preview per tool type
 const PREVIEW_FIELDS = ['command', 'file_path', 'pattern', 'relative_path', 'name_path', 'path']
 
-function extractCommandPreview(toolName: string, input: unknown): string | undefined {
+function extractCommandPreview(_toolName: string, input: unknown): string | undefined {
   if (input == null || typeof input !== 'object') return undefined
   const obj = input as Record<string, unknown>
   for (const field of PREVIEW_FIELDS) {
@@ -123,6 +123,9 @@ export function runPostToolUseHook(
   let source: EventSource = classifySource(toolName, parsed.tool_input)
   let estimationMethod = tagEstimationMethod(source)
 
+  // Extract command preview early so it can be stored in the DB (picked up by xray watcher)
+  const commandPreview = extractCommandPreview(toolName, parsed.tool_input)
+
   // Build the event first; we may upgrade `source` to 'rtk' below if the
   // PreToolUse hook left an rtk rewrite mark for this exact Bash command.
   const event: ToolEvent = {
@@ -135,6 +138,7 @@ export function runPostToolUseHook(
     duration_ms: parsed.duration_ms ?? Date.now() - start,
     estimation_method: estimationMethod,
     created_at: new Date().toISOString(),
+    command_preview: commandPreview ?? null,
   }
 
   let additionalContext: string | null = null
@@ -241,13 +245,11 @@ export function runPostToolUseHook(
   // Enrich event with project context so xray can group by project
   try {
     const projDir = opts.projectDir ?? resolveProjectDir()
-    const commandPreview = extractCommandPreview(toolName, parsed.tool_input)
     const enriched: Record<string, unknown> = {
       ...event,
       project_path: projDir,
-      project_name: projDir.split(/[\\/]/).filter(Boolean).pop() ?? 'unknown',
+      project_name: projDir.split(/[\\\/]/).filter(Boolean).pop() ?? 'unknown',
       project_hash: projectHash(projDir),
-      ...(commandPreview !== undefined && { command_preview: commandPreview }),
     }
     void postToXray(enriched).catch(() => { /* swallow */ })
   } catch {

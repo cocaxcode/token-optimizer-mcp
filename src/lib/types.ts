@@ -35,6 +35,8 @@ export interface ToolEvent {
   created_at: string
   /** Tokens saved vs reading the full file — populated by shadow measurement (Serena tools only) */
   shadow_delta_tokens?: number | null
+  /** Short preview of the command/path (≤100 chars) for xray live feed */
+  command_preview?: string | null
 }
 
 export type BudgetScope = 'session' | 'project'

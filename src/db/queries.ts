@@ -28,8 +28,8 @@ export function buildQueries(db: DB) {
     `INSERT INTO tool_calls (
       session_id, tool_name, source, output_bytes,
       tokens_estimated, tokens_actual, duration_ms, estimation_method,
-      shadow_delta_tokens, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      shadow_delta_tokens, command_preview, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
 
   const getToolCallsSince = db.prepare(
@@ -171,6 +171,7 @@ export function buildQueries(db: DB) {
         event.duration_ms,
         event.estimation_method,
         event.shadow_delta_tokens ?? null,
+        event.command_preview ?? null,
         event.created_at,
       )
     },

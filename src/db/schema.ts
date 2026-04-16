@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
   duration_ms INTEGER,
   estimation_method TEXT,
   shadow_delta_tokens INTEGER,
+  command_preview TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
