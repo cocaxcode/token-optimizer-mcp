@@ -2,7 +2,7 @@
   <h1 align="center">@cocaxcode/token-optimizer-mcp</h1>
   <p align="center">
     <strong>Know what your tokens cost. Control where they go.</strong><br/>
-    13 tools &middot; 9 CLI commands &middot; 3 hooks &middot; Coach with 18 tips &middot; Measurement honesty &middot; Budget enforcement
+    14 tools &middot; 9 CLI commands &middot; 4 hooks &middot; Coach with 20 tips &middot; Measurement honesty &middot; Budget enforcement
   </p>
 </p>
 
@@ -11,8 +11,8 @@
   <a href="https://www.npmjs.com/package/@cocaxcode/token-optimizer-mcp"><img src="https://img.shields.io/npm/dm/@cocaxcode/token-optimizer-mcp.svg?style=flat-square" alt="npm downloads" /></a>
   <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License" /></a>
   <img src="https://img.shields.io/badge/node-%3E%3D20-339933?style=flat-square&logo=node.js&logoColor=white" alt="Node" />
-  <img src="https://img.shields.io/badge/tools-13-blueviolet?style=flat-square" alt="13 tools" />
-  <img src="https://img.shields.io/badge/tests-253-brightgreen?style=flat-square" alt="238 tests" />
+  <img src="https://img.shields.io/badge/tools-14-blueviolet?style=flat-square" alt="14 tools" />
+  <img src="https://img.shields.io/badge/tests-322-brightgreen?style=flat-square" alt="322 tests" />
 </p>
 
 <p align="center">
@@ -34,7 +34,7 @@ An MCP server that sits between Claude Code and your tools, measuring every inte
 
 This is not a replacement for [serena](https://github.com/oraios/serena) (symbolic file reads) or [RTK](https://github.com/standard-input/rtk) (Bash output filtering). It **orchestrates** with them: detects whether they are installed, measures how much they save, suggests installing them when they would help, and reports everything with honest labels — splitting **Medido** (measured) from **Estimado** (estimated) so you always know what is real.
 
-Three hooks record everything silently in a per-project SQLite database. Thirteen MCP tools let the AI (and you) query stats, set budgets, search sessions, prune unused MCPs, and get proactive coaching tips. Nine CLI subcommands let you manage everything from the terminal. All data stays on your machine — nothing is synced, nothing is tracked, nothing leaves your disk.
+Four hooks record everything silently in a per-project SQLite database. Fourteen MCP tools let the AI (and you) query stats, set budgets, search sessions, prune unused MCPs, and get proactive coaching tips. Nine CLI subcommands let you manage everything from the terminal. All data stays on your machine — nothing is synced, nothing is tracked, nothing leaves your disk.
 
 Works with **Claude Code**, **Claude Desktop**, **Cursor**, **Windsurf**, **VS Code**, **Codex CLI**, **Gemini CLI**, and any MCP-compatible client.
 
@@ -74,7 +74,7 @@ You don't need to memorize tool names. Just say what you need.
 
 ```
 "Any tips for me?"
--> 18 tips: opusplan, /compact, plan mode, serena, RTK, skills migration...
+-> 20 tips: opusplan, /compact, plan mode, serena, RTK, skills migration...
 -> Active rules detect: too many searches, huge file reads, Opus on simple tasks
 
 "Explain the use-opusplan tip"
@@ -104,7 +104,8 @@ You don't need to memorize tool names. Just say what you need.
 
 ```
 (Claude Code auto-compacts the context)
--> SessionStart:compact hook injects: recent files, recent commands, budget status
+-> SessionStart:compact hook injects: recent files, recent commands, budget status,
+   recently touched Serena symbols
 -> You pick up where you left off
 ```
 
@@ -126,13 +127,15 @@ claude mcp add --scope user token-optimizer -- npx -y @cocaxcode/token-optimizer
 npm install -g @cocaxcode/token-optimizer-mcp
 ```
 
-> **Why?** The 3 hooks (`PreToolUse`, `PostToolUse`, `SessionStart`) run via `npx @cocaxcode/token-optimizer-mcp --hook <name>`. Without a global install, `npx` can't find the binary and the hooks **fail silently** — no RTK bridge, no analytics, no compact recovery. The MCP server itself works fine with `npx -y`, but hooks need the package in PATH.
+> **Why?** The 4 hooks (`PreToolUse`, `PostToolUse`, `SessionStart`) run via `npx @cocaxcode/token-optimizer-mcp --hook <name>`. Without a global install, `npx` can't find the binary and the hooks **fail silently** — no RTK bridge, no analytics, no compact recovery. The MCP server itself works fine with `npx -y`, but hooks need the package in PATH.
 
 **Step 3 — Set up hooks:**
 
 ```bash
 npx @cocaxcode/token-optimizer-mcp install
 ```
+
+This registers the 4 core hooks and, if Serena is detected, also auto-registers the Serena-specific hooks (see [Serena integration](#serena-mcp--symbolic-file-reads) below).
 
 **Step 4 — Restart Claude Code** (hooks are loaded at session start).
 
@@ -230,20 +233,20 @@ npx @cocaxcode/token-optimizer-mcp uninstall --purge --confirm   # also delete s
 
 ## Coach Layer
 
-The coach combines a **static knowledge base** of 18 tips with a **dynamic detector** of 11 rules that fire based on your recent activity.
+The coach combines a **static knowledge base** of 20 tips with a **dynamic detector** of 12 rules that fire based on your recent activity.
 
-### 18 tips
+### 20 tips
 
 | Category | Tips |
 |---|---|
 | **Model/mode** | `use-opusplan`, `use-plan-mode`, `use-fast-mode`, `default-to-sonnet`, `use-haiku-for-simple` |
 | **Context** | `use-compact-long-session`, `use-clear-rename-resume`, `use-sessionstart-compact-hook`, `use-memory-save` |
-| **Tools** | `use-agent-explore`, `use-todowrite-long-task`, `use-skill-trigger`, `install-serena`, `install-rtk` |
+| **Tools** | `use-agent-explore`, `use-todowrite-long-task`, `use-skill-trigger`, `install-serena`, `install-rtk`, `prefer-serena-reads`, `use-serena-overview-first` |
 | **Config** | `use-mcp-prune`, `migrate-claudemd-to-skills`, `use-settings-local`, `use-prompt-caching` |
 
 Every tip includes: description, exact invocation command, when it applies, honest savings estimate, and the source of that claim.
 
-### 11 detection rules
+### 12 detection rules
 
 | Rule | Fires when | Suggests |
 |---|---|---|
@@ -252,9 +255,13 @@ Every tip includes: description, exact invocation command, when it applies, hone
 | `detect-repeated-searches` | 3+ Grep/Glob in 20 events | `Agent Explore` |
 | `detect-huge-file-reads` | Read > 50k tokens | `install serena` |
 | `detect-many-bash-commands` | 11+ Bash in 100 events | `install RTK` |
-| `detect-opus-for-simple-task` | Opus active, no edits | `switch to Sonnet/Haiku` |
-| `detect-clear-opportunity` | Topic pivot detected | `/rename + /clear + /resume` |
-| `detect-post-milestone-opportunity` | 5+ edits + tests + context > 40% | `/compact` at natural breakpoint |
+| `detect-opus-for-simple-task` | Opus active, 6+ edits/Bash in 20 events | `switch to Sonnet/Haiku` |
+| `detect-clear-opportunity` | Topic pivot detected (< 30% tool overlap) | `/rename + /clear + /resume` |
+| `detect-post-milestone-opportunity` | 5+ edits + Bash + context > 40% | `/compact` at natural breakpoint |
+| `detect-serena-read-cascade` | ≥5 `find_symbol` without `get_symbols_overview` | `use-serena-overview-first` |
+| `detect-read-over-serena` | 3+ Read > 2k tokens in 30 events | `prefer-serena-reads` |
+| `detect-claudemd-bloat` | *(stub — filesystem stat at runtime)* | `migrate-claudemd-to-skills` |
+| `detect-skill-trigger-ignored` | *(stub — requires skill registry)* | `use-skill-trigger` |
 
 ### Context meter (3-source fallback)
 
@@ -302,7 +309,7 @@ token-optimizer-mcp **does not install anything automatically**. `doctor` detect
 
 ### serena-mcp — symbolic file reads
 
-Instead of reading entire files (500+ lines), serena uses **LSP** to read only the symbols (classes, functions, methods) you actually need. Saves **20-30%** on large file reads.
+Instead of reading entire files (500+ lines), serena uses **LSP** to read only the symbols (classes, functions, methods) you actually need. Saves **20-30%** on large file reads — or **60-90%** when using `get_symbols_overview` + `find_symbol` instead of `Read`.
 
 **Step 1 — Install serena as MCP server:**
 
@@ -355,7 +362,12 @@ Expected output when fully configured:
 
 If you see `✓` but no `project-registered-for-cwd`, serena is installed but the current project is not registered.
 
-**How token-optimizer integrates**: the `optimization_status` tool and `doctor` CLI detect serena presence across 5 signals (global settings, ~/.claude.json, project settings, local settings, project registration). The coach `detect-huge-file-reads` rule fires when a Read exceeds 50k tokens and suggests using serena instead.
+**Serena hook auto-registration**: when you run `token-optimizer-mcp install`, the installer probes for Serena automatically:
+
+- If the **MCP server** is registered (detected via `~/.serena/`): installs the `serena-activate` hook — a lightweight SessionStart hook that emits the correct `ToolSearch` instruction so the agent can call Serena tools even when MCP tools are deferred at session start.
+- If the **CLI** (`serena-hooks`) is also on PATH: additionally installs the 3 official Serena hooks (`remind`, `auto-approve`, `cleanup`). These are kept in sync — if the CLI disappears, the next `install` run removes the orphan entries.
+
+**How token-optimizer integrates**: the `optimization_status` tool and `doctor` CLI detect serena presence across 5 signals (global settings, ~/.claude.json, project settings, local settings, project registration). The coach `detect-huge-file-reads` and `detect-read-over-serena` rules fire when Read usage is heavy and suggest using serena instead.
 
 **Security note**: serena includes `execute_shell_command` among its tools. Review the configuration before enabling.
 
@@ -468,7 +480,7 @@ If you see `rtk-binary-in-path` but no `token-optimizer-bridge-active`, RTK is i
 
 | Command | Description |
 |---|---|
-| `install` | Register MCP server + 3 hooks in `~/.claude/settings.json` |
+| `install` | Register MCP server + 4 hooks in `~/.claude/settings.json` (auto-registers Serena hooks if detected) |
 | `uninstall` | Remove entries; `--purge --confirm` deletes stored data |
 | `doctor` | Run all probes + schema measurer + advisor (always exits 0) |
 | `status` | Install detection, DB path, events today, tokens by source, budget |
@@ -486,7 +498,10 @@ If you see `rtk-binary-in-path` but no `token-optimizer-bridge-active`, RTK is i
 |---|---|---|
 | `PreToolUse` | `Bash` | Checks budget (passthrough / warn), then RTK rewrite. Sets `updatedInput` + `permissionDecision: "allow"` when RTK rewrites (exit 0/3). Budget warn always wins over RTK. |
 | `PostToolUse` | `*` | Async analytics to SQLite. Fire-and-forget to xray. Target p95: 10ms. |
-| `SessionStart` | `compact` | Injects markdown: recent files, commands, budget. Token-capped at 2000. |
+| `SessionStart` | `compact` | Injects markdown: recent files, commands, budget, recently touched Serena symbols. Token-capped at 2000. |
+| `SessionStart` | *(any)* | **serena-activate** — when Serena is detected, emits the `ToolSearch` activation sequence so the agent can call Serena tools even when MCP tools are deferred. Noop when Serena is not installed. |
+
+Additionally, if the `serena-hooks` CLI binary is on PATH, `install` registers the 3 official Serena hooks: `PreToolUse → remind`, `PreToolUse(mcp__serena__.*) → auto-approve`, and `Stop → cleanup`.
 
 ---
 
@@ -541,14 +556,14 @@ npx @cocaxcode/token-optimizer-mcp config get coach.context_thresholds
 ```
 src/
 ├── index.ts              # Entry — --mcp | --hook X | subcommand
-├── server.ts             # createServer() — registers 13 tools
+├── server.ts             # createServer() — registers 14 tools + 1 resource
 ├── cli/                  # 9 subcommands + dispatcher
-├── hooks/                # pretooluse, posttooluse, sessionstart
+├── hooks/                # pretooluse, posttooluse, sessionstart, serena-activate
 ├── tools/                # budget, session, orchestration, coach, toon
 ├── services/             # analytics-logger, budget-manager, session-retriever,
 │                         #   stats, rtk-reader, serena-shadow, xray-client
 ├── orchestration/        # detector (probes), schema-measurer, advisor
-├── coach/                # knowledge-base (18), rules (11), detector,
+├── coach/                # knowledge-base (20 tips), rules (12), detector,
 │                         #   context-meter, reference-data, surface (dedupe)
 ├── lib/                  # types, paths, storage, token-estimator, response
 └── db/                   # schema (DDL), connection (WAL), queries
@@ -556,7 +571,7 @@ src/
 
 **Stack**: TypeScript 5 strict ESM &middot; `@modelcontextprotocol/sdk` ^1.27 &middot; `better-sqlite3` ^11 (WAL + FTS5) &middot; Zod 3.25 &middot; Vitest 3.2+ &middot; tsup &middot; Node >=20
 
-**253 tests** across 29 suites. All tools tested via `InMemoryTransport`.
+**322 tests** across 35 suites. All tools tested via `InMemoryTransport`.
 
 ---
 
