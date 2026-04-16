@@ -1,6 +1,6 @@
 {
   "name": "@cocaxcode/token-optimizer-mcp",
-  "version": "0.4.21",
+  "version": "0.4.22",
   "mcpName": "io.github.cocaxcode/token-optimizer-mcp",
   "description": "Orchestration + observability + coach layer for Claude Code token optimization. Measures tool usage, enforces budgets, advises on complementary tools (serena, RTK), and proactively surfaces savings tips.",
   "type": "module",

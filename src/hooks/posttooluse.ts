@@ -60,7 +60,7 @@ function extractOutputChars(response: unknown): number {
 }
 
 // Priority-ordered field names to extract a meaningful preview per tool type
-const PREVIEW_FIELDS = ['command', 'file_path', 'pattern', 'relative_path', 'name_path', 'path']
+const PREVIEW_FIELDS = ['command', 'file_path', 'pattern', 'relative_path', 'name_path', 'name_path_pattern', 'query', 'path']
 
 function extractCommandPreview(_toolName: string, input: unknown): string | undefined {
   if (input == null || typeof input !== 'object') return undefined
