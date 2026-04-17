@@ -199,8 +199,19 @@ function hasContextClaudeCodeInFile(filePath: string): boolean {
       const server = servers[key]
       if (!server || !Array.isArray(server.args)) continue
       const args = server.args as string[]
-      const ctxIdx = args.indexOf('--context')
-      if (ctxIdx >= 0 && args[ctxIdx + 1] === 'claude-code') return true
+      // Aceptar las 3 formas válidas en CLI:
+      //   --context claude-code      (dos args separados)
+      //   --context=claude-code      (un arg fusionado con =)
+      //   -c claude-code / -c=claude-code (forma corta)
+      for (let i = 0; i < args.length; i++) {
+        const a = args[i]
+        if ((a === '--context' || a === '-c') && args[i + 1] === 'claude-code') {
+          return true
+        }
+        if (a === '--context=claude-code' || a === '-c=claude-code') {
+          return true
+        }
+      }
     }
   } catch {
     // swallow

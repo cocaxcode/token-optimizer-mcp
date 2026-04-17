@@ -314,4 +314,34 @@ describe('checkSerenaHealth', () => {
     const ids = warnings.map((w) => w.id)
     expect(ids).not.toContain('missing-context-claude-code')
   })
+
+  // Regression: usuarios escriben --context=claude-code como un solo arg
+  // (forma válida en CLI). El detector antiguo sólo miraba la forma separada
+  // y marcaba falso positivo.
+  it('reconoce --context=claude-code fusionado con =', () => {
+    writeJson(path.join(home, '.claude.json'), {
+      mcpServers: { serena: { command: 'serena', args: ['start-mcp-server', '--context=claude-code', '--project-from-cwd'] } },
+    })
+    const warnings = checkSerenaHealth({ home, cwd })
+    const ids = warnings.map((w) => w.id)
+    expect(ids).not.toContain('missing-context-claude-code')
+  })
+
+  it('reconoce forma corta -c claude-code (separado)', () => {
+    writeJson(path.join(home, '.claude', 'settings.json'), {
+      mcpServers: { serena: { command: 'uvx', args: ['serena', 'start-mcp-server', '-c', 'claude-code'] } },
+    })
+    const warnings = checkSerenaHealth({ home, cwd })
+    const ids = warnings.map((w) => w.id)
+    expect(ids).not.toContain('missing-context-claude-code')
+  })
+
+  it('reconoce forma corta -c=claude-code (fusionado)', () => {
+    writeJson(path.join(home, '.claude', 'settings.json'), {
+      mcpServers: { serena: { command: 'uvx', args: ['serena', 'start-mcp-server', '-c=claude-code'] } },
+    })
+    const warnings = checkSerenaHealth({ home, cwd })
+    const ids = warnings.map((w) => w.id)
+    expect(ids).not.toContain('missing-context-claude-code')
+  })
 })
