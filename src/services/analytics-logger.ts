@@ -82,7 +82,12 @@ export function tagEstimationMethod(
     case 'builtin':
     case 'mcp':
     case 'xray':
-      return 'measured_exact'
+      // Los tokens de estos sources se calculan con heurística chars × 0.27
+      // sobre el output de la tool. No es lo facturado por Anthropic — eso
+      // requiere estimateTokensActual() vía count_tokens API, que no se
+      // invoca desde el hot path hoy. El tag 'measured_exact' se reservará
+      // para cuando se cableen medidas reales (transcript JSONL o count_tokens).
+      return 'estimated_heuristic'
     case 'serena':
       if (hints.hasShadow) return 'estimated_serena_shadow'
       return 'estimated_serena_fallback'

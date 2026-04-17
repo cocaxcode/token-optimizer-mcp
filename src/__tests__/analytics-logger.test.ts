@@ -69,11 +69,11 @@ describe('classifySource', () => {
 })
 
 describe('tagEstimationMethod', () => {
-  it('measured_exact for own / builtin / mcp / xray', () => {
-    expect(tagEstimationMethod('own')).toBe('measured_exact')
-    expect(tagEstimationMethod('builtin')).toBe('measured_exact')
-    expect(tagEstimationMethod('mcp')).toBe('measured_exact')
-    expect(tagEstimationMethod('xray')).toBe('measured_exact')
+  it('estimated_heuristic for own / builtin / mcp / xray (chars x 0.27)', () => {
+    expect(tagEstimationMethod('own')).toBe('estimated_heuristic')
+    expect(tagEstimationMethod('builtin')).toBe('estimated_heuristic')
+    expect(tagEstimationMethod('mcp')).toBe('estimated_heuristic')
+    expect(tagEstimationMethod('xray')).toBe('estimated_heuristic')
   })
 
   it('serena shadow vs fallback', () => {

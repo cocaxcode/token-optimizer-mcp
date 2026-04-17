@@ -7,6 +7,7 @@ export type EstimationMethod =
   | 'measured_exact'
   | 'measured_delta'
   | 'measured_rtk_rewrite'
+  | 'estimated_heuristic'
   | 'estimated_rtk_db'
   | 'estimated_rtk_marker'
   | 'estimated_rtk_fallback'

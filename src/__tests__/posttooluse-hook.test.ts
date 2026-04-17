@@ -52,7 +52,7 @@ describe('runPostToolUseHook', () => {
     expect(result.event).not.toBeNull()
     expect(result.event?.tool_name).toBe('Bash')
     expect(result.event?.source).toBe('builtin')
-    expect(result.event?.estimation_method).toBe('measured_exact')
+    expect(result.event?.estimation_method).toBe('estimated_heuristic')
     expect(result.event?.tokens_estimated).toBeGreaterThan(0)
   })
 
