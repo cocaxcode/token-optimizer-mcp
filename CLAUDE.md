@@ -144,6 +144,32 @@ npm run inspector # MCP Inspector
 - `toon-format` real package: current implementation uses compact JSON (round-trip lossless); swap-in-place when package exists
 - `estimateTokensActual` count_tokens API sampling wired in (implemented + unit-tested; not invoked from hook path yet)
 
+### Sprint D (2026-04-17) — Savings measurement cables
+
+Ampliamos la medición de ahorros propios para que xray muestre factores
+calibrados sobre datos reales, no constantes hardcoded:
+
+- **Serena shadow auto-enable**: `install` ahora activa
+  `shadow_measurement.serena = true` automáticamente si detecta serena (MCP
+  registrado o CLI instalado) y el usuario no ha tocado el flag. Así las
+  filas nuevas de serena llevan `shadow_delta_tokens` real desde la primera
+  call, sin intervención manual.
+
+- **RTK shadow cable** (`services/rtk-reader.ts::measureRtkDelta` + cable en
+  `hooks/posttooluse.ts`): tras reclasificar `source='rtk'`, mide el delta
+  en 3 estrategias:
+  1. Marker `[rtk: filtered N tokens]` en el output → `estimated_rtk_marker`
+  2. Lookup de `tracking.db` de RTK por comando → `estimated_rtk_db` (cacheado 30s)
+  3. Fallback `applyFallback(outputTokens)` con ratio 0.7 → `estimated_rtk_fallback`
+  El fallback NO sobrescribe el tag `measured_rtk_rewrite` (preserva la
+  señal "hubo rewrite") pero sí rellena `shadow_delta_tokens` para que xray
+  calcule factor propio.
+
+- **Retrospectivo** (`scripts/backfill-serena-shadow.mjs`): script one-off
+  que recupera `shadow_delta_tokens` para filas serena antiguas usando el
+  `command_preview` y el tamaño actual de los archivos. Propaga a la mirror
+  de xray por `input_hash` (requiere xray schema v6+).
+
 ### Measurement honesty invariants
 
 Every code path that touches tokens SHALL tag its source with an `estimation_method`. The CLI `report` always emits `Resumen: Medido: X tokens · Estimado: Y tokens`. Public savings claims come from `src/coach/reference-data.ts` tagged `reference_measured` with `verified_at` dates. Stale rows (>90 days) flagged via `getStaleRows()`.

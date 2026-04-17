@@ -9,6 +9,7 @@ import { spawnSync } from 'node:child_process'
 import { ensureStorageDir } from '../lib/storage.js'
 import { probeSerenaPresence, type SerenaProbe } from '../hooks/serena-activate.js'
 import { runDoctor } from './doctor.js'
+import { loadConfig, saveConfig, getConfigPath } from './config.js'
 
 const SERVER_NAME = 'token-optimizer'
 
@@ -296,6 +297,37 @@ export function runInstall(_args: string[] = [], opts: InstallOptions = {}): num
   }
   settings.hooks = hooks
 
+  // Auto-activar shadow_measurement.serena si:
+  //   - Serena está registrada (MCP o CLI)
+  //   - El usuario NO ha puesto explícitamente el flag (ni true ni false)
+  // Si ya lo tocó (aunque sea a false), respetamos su decisión.
+  // Con el flag activo, cada call a serena en PostToolUse mide
+  // shadow_delta_tokens = fullFileTokens - serena_output_tokens, que es lo que
+  // xray enseña como ahorro real.
+  let shadowAutoEnabled = false
+  if (serenaProbe.serena_mcp_registered || serenaProbe.serena_cli_installed) {
+    const configPath = getConfigPath(home)
+    let userHasExplicitFlag = false
+    try {
+      if (fs.existsSync(configPath)) {
+        const raw = fs.readFileSync(configPath, 'utf8')
+        const parsed = JSON.parse(raw) as Record<string, unknown>
+        const sm = parsed.shadow_measurement as Record<string, unknown> | undefined
+        userHasExplicitFlag = sm !== undefined && sm !== null && 'serena' in sm
+      }
+    } catch {
+      // archivo corrupto o no legible → tratamos como si no estuviera
+    }
+    if (!userHasExplicitFlag) {
+      const cfg = loadConfig(home)
+      if (!cfg.shadow_measurement.serena) {
+        cfg.shadow_measurement.serena = true
+        saveConfig(cfg, home)
+        shadowAutoEnabled = true
+      }
+    }
+  }
+
   writeSettings(p, settings)
 
   // Global storage dir
@@ -324,6 +356,11 @@ export function runInstall(_args: string[] = [], opts: InstallOptions = {}): num
     print(`            → para los otros 3: uv tool install git+https://github.com/oraios/serena`)
   } else {
     print(`  serena:   no detectado — hooks de serena omitidos`)
+  }
+
+  if (shadowAutoEnabled) {
+    print(`            shadow_measurement.serena = true (auto-activado)`)
+    print(`            → mide ahorro real vs lectura completa de archivo por cada call`)
   }
 
   if (opts.runDoctorAtEnd !== false) {

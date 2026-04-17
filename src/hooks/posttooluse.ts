@@ -23,6 +23,7 @@ import { loadConfig } from '../cli/config.js'
 import { hashCommand } from '../lib/command-hash.js'
 import type { ToolEvent, DetectionSeverity, EventSource } from '../lib/types.js'
 import { shadowMeasureSerena } from '../services/serena-shadow.js'
+import { measureRtkDelta } from '../services/rtk-reader.js'
 import path from 'node:path'
 
 // Serena tools that read a single file and support shadow measurement
@@ -172,10 +173,45 @@ export function runPostToolUseHook(
       }
     }
 
+    const cfg = loadConfig(opts.home)
+
+    // RTK shadow — medir tokens ahorrados en Bash envueltos por RTK. Aplica a
+    // los dos caminos: (a) rewrite PreToolUse → PostToolUse con mark consumido,
+    // (b) llamadas directas `rtk <cmd>` detectadas por classifySource.
+    // 3 estrategias en cascada: marker inline → tracking.db de RTK → fallback.
+    //
+    // Regla de estimation_method: si el cable produjo un método que aporta
+    // información real (marker en el output, lookup en tracking.db de RTK),
+    // lo usamos. Si sólo llegó al fallback ratio, preservamos el tag anterior
+    // (típicamente measured_rtk_rewrite) porque "hubo un rewrite" es más
+    // informativo que "aplicamos un ratio genérico". El delta en sí se
+    // conserva igualmente para que xray vea ahorro medido.
+    //
+    // Silencioso en fallo: nunca bloquea el hook.
+    if (event.source === 'rtk' && event.shadow_delta_tokens == null) {
+      try {
+        const rawInput = parsed.tool_input as { command?: string } | undefined
+        const cmd = rawInput?.command
+        const rtkMeasurement = measureRtkDelta({
+          toolResponse: parsed.tool_response,
+          command: typeof cmd === 'string' ? cmd : undefined,
+          outputTokens: event.tokens_estimated,
+          rtkDbPath: cfg.rtk_integration.rtk_db_path,
+        })
+        if (rtkMeasurement) {
+          event.shadow_delta_tokens = rtkMeasurement.delta
+          if (rtkMeasurement.method !== 'estimated_rtk_fallback') {
+            event.estimation_method = rtkMeasurement.method
+          }
+        }
+      } catch {
+        // Nunca bloqueamos en el hook — mantenemos la reclassificación original
+      }
+    }
+
     // Shadow measurement: if this is a Serena read tool with a relative_path,
     // measure how many tokens were saved vs reading the full file.
     // Updates estimation_method so reports reflect Serena's actual contribution.
-    const cfg = loadConfig(opts.home)
     if (SERENA_SHADOW_TOOLS.has(toolName) && cfg.shadow_measurement.serena) {
       try {
         const input = parsed.tool_input as Record<string, unknown> | undefined
