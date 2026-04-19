@@ -1,9 +1,12 @@
 // Session retrieval + re-injection payload builder — Phase 3.1, 3.2 (simplified: no FTS5)
+// Reinjection focuses on actionable signal: budget status + conditional reminders
+// based on recent tool activity and detected external tools (serena, RTK).
 
 import type Database from 'better-sqlite3'
 import type { BudgetStatus, ReinjectionPayload } from '../lib/types.js'
 import { BudgetManager } from './budget-manager.js'
 import { estimateTokensFast } from '../lib/token-estimator.js'
+import { probeSerena, probeRtk } from '../orchestration/detector.js'
 
 type DB = Database.Database
 
@@ -20,6 +23,11 @@ export interface RecentToolEntry {
   tool_name: string
   created_at: string
   tokens_estimated: number
+}
+
+export interface ReinjectionContext {
+  serenaAvailable?: boolean
+  rtkAvailable?: boolean
 }
 
 export class SessionRetriever {
@@ -54,22 +62,31 @@ export class SessionRetriever {
   }
 
   /**
-   * Build the compact re-injection markdown payload. 3 sections:
-   * 1. Presupuesto (always kept)
-   * 2. Archivos recientes (tool_name + tokens)
-   * 3. Comandos Bash recientes (count + tokens)
+   * Build the compact re-injection markdown payload. 2 possible sections:
+   * 1. Presupuesto (always, when budget data available)
+   * 2. Recordatorios (conditional: serena/RTK hints when relevant activity)
    *
-   * Token-capped via estimateTokensFast. Lowest-priority sections are dropped
+   * Previous file-read and bash-count metadata sections were removed — they
+   * reinjected filler tokens without actionable value. The agent cannot act
+   * on "you read 5 files an hour ago". Hints that tell it WHICH tool to use
+   * next (serena symbolic reads, RTK-filtered bash) are useful.
+   *
+   * Token-capped via estimateTokensFast. Lowest-priority sections dropped
    * first when cap is exceeded.
    */
   buildReinjectionPayload(
     sessionId: string,
     projectHash: string | null,
     budgetTokens = 2000,
+    ctx: ReinjectionContext = {},
   ): ReinjectionPayload {
     const fileReads = this.getRecentFileReads(sessionId, 5)
     const bashCmds = this.getRecentBashCommands(sessionId, 5)
     const budget = this.getBudgetSnapshot(sessionId, projectHash)
+
+    const serenaAvailable =
+      ctx.serenaAvailable ?? probeSerena().present
+    const rtkAvailable = ctx.rtkAvailable ?? probeRtk().present
 
     const sections: Array<{ title: string; body: string; priority: number }> = []
     sections.push({
@@ -77,20 +94,18 @@ export class SessionRetriever {
       body: formatBudgetSection(budget),
       priority: 1, // always keep
     })
-    if (fileReads.length > 0) {
+
+    const reminders = buildReminders({
+      fileReadCount: fileReads.length,
+      bashCount: bashCmds.length,
+      serenaAvailable,
+      rtkAvailable,
+    })
+    if (reminders.length > 0) {
       sections.push({
-        title: '## Archivos recientes',
-        body: fileReads
-          .map((e) => `- ${e.created_at} — ${e.tool_name}: ${e.tokens_estimated} tokens`)
-          .join('\n'),
+        title: '## Recordatorios',
+        body: reminders.map((r) => `- ${r}`).join('\n'),
         priority: 2,
-      })
-    }
-    if (bashCmds.length > 0) {
-      sections.push({
-        title: '## Comandos Bash recientes',
-        body: `- ${bashCmds.length} comandos, ${bashCmds.reduce((s, e) => s + e.tokens_estimated, 0)} tokens total`,
-        priority: 3,
       })
     }
 
@@ -123,6 +138,28 @@ export class SessionRetriever {
       dropped_count: droppedCount,
     }
   }
+}
+
+interface BuildRemindersOpts {
+  fileReadCount: number
+  bashCount: number
+  serenaAvailable: boolean
+  rtkAvailable: boolean
+}
+
+function buildReminders(opts: BuildRemindersOpts): string[] {
+  const out: string[] = []
+  if (opts.serenaAvailable && opts.fileReadCount >= 3) {
+    out.push(
+      'Venías leyendo varios archivos. Usa Serena (`find_symbol`, `get_symbols_overview`) para lecturas simbólicas en vez de `Read` completo.',
+    )
+  }
+  if (opts.rtkAvailable && opts.bashCount >= 3) {
+    out.push(
+      'RTK está activo: los comandos Bash se filtran automáticamente, no trunques output manualmente.',
+    )
+  }
+  return out
 }
 
 function formatBudgetSection(status: BudgetStatus): string {

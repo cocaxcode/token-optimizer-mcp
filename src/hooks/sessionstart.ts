@@ -14,6 +14,7 @@ import { renderReinjectionMarkdown } from '../services/session-retriever.js'
 import { buildCoachSectionMarkdown } from '../coach/session-section.js'
 import { loadConfig } from '../cli/config.js'
 import { buildQueries } from '../db/queries.js'
+import { probeSerena, probeRtk } from '../orchestration/detector.js'
 
 export interface SessionStartInput {
   session_id?: string
@@ -74,10 +75,13 @@ export async function runSessionStartHook(
     const db = getDb(dbPath)
     const queries = buildQueries(db)
     const retriever = new SessionRetriever(db)
+    const serenaAvailable = probeSerena({ home: opts.home }).present
+    const rtkAvailable = probeRtk({ home: opts.home }).present
     const payload = retriever.buildReinjectionPayload(
       sessionId,
       projectHash(projectDir),
       opts.budgetTokens ?? 2000,
+      { serenaAvailable, rtkAvailable },
     )
     markdown = renderReinjectionMarkdown(payload)
 

@@ -64,7 +64,6 @@ describe('runSessionStartHook', () => {
       coachEnabled: false,
     })
     expect(md).toContain('## Presupuesto')
-    expect(md).toContain('## Archivos recientes')
   })
 
   it('handles malformed stdin gracefully', async () => {

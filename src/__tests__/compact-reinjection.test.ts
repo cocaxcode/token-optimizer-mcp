@@ -14,7 +14,7 @@ describe('buildReinjectionPayload', () => {
     closeDb()
   })
 
-  it('emits 3 sections when data exists', () => {
+  it('emits budget section always', () => {
     const db = getDb(':memory:')
     const mgr = new BudgetManager(db)
     mgr.setBudget({ scope: 'session', scope_key: 'sess-1', limit_tokens: 10_000, mode: 'warn' })
@@ -29,13 +29,65 @@ describe('buildReinjectionPayload', () => {
       }),
     ])
     const retriever = new SessionRetriever(db)
-    const payload = retriever.buildReinjectionPayload('sess-1', null, 2000)
+    const payload = retriever.buildReinjectionPayload('sess-1', null, 2000, {
+      serenaAvailable: false,
+      rtkAvailable: false,
+    })
     const md = renderReinjectionMarkdown(payload)
     expect(md).toContain('## Presupuesto')
-    expect(md).toContain('## Archivos recientes')
-    expect(md).toContain('## Comandos Bash recientes')
+    // Metadata-only sections were removed — they reinjected filler without value.
+    expect(md).not.toContain('## Archivos recientes')
+    expect(md).not.toContain('## Comandos Bash recientes')
     expect(payload.truncated).toBe(false)
     expect(payload.dropped_count).toBe(0)
+  })
+
+  it('emits serena reminder when serena available and file reads recent', () => {
+    const db = getDb(':memory:')
+    seedAnalyticsDb(
+      db,
+      Array.from({ length: 4 }, () => makeEvent({ session_id: 'sess-1', tool_name: 'Read' })),
+    )
+    const retriever = new SessionRetriever(db)
+    const payload = retriever.buildReinjectionPayload('sess-1', null, 2000, {
+      serenaAvailable: true,
+      rtkAvailable: false,
+    })
+    const md = renderReinjectionMarkdown(payload)
+    expect(md).toContain('## Recordatorios')
+    expect(md).toContain('Serena')
+    expect(md).not.toContain('RTK')
+  })
+
+  it('emits rtk reminder when rtk available and bash commands recent', () => {
+    const db = getDb(':memory:')
+    seedAnalyticsDb(
+      db,
+      Array.from({ length: 4 }, () => makeEvent({ session_id: 'sess-1', tool_name: 'Bash' })),
+    )
+    const retriever = new SessionRetriever(db)
+    const payload = retriever.buildReinjectionPayload('sess-1', null, 2000, {
+      serenaAvailable: false,
+      rtkAvailable: true,
+    })
+    const md = renderReinjectionMarkdown(payload)
+    expect(md).toContain('## Recordatorios')
+    expect(md).toContain('RTK')
+  })
+
+  it('omits recordatorios when no external tools detected', () => {
+    const db = getDb(':memory:')
+    seedAnalyticsDb(
+      db,
+      Array.from({ length: 5 }, () => makeEvent({ session_id: 'sess-1', tool_name: 'Read' })),
+    )
+    const retriever = new SessionRetriever(db)
+    const payload = retriever.buildReinjectionPayload('sess-1', null, 2000, {
+      serenaAvailable: false,
+      rtkAvailable: false,
+    })
+    const md = renderReinjectionMarkdown(payload)
+    expect(md).not.toContain('## Recordatorios')
   })
 
   it('stays under token cap with 50-event fixture', () => {
@@ -49,7 +101,10 @@ describe('buildReinjectionPayload', () => {
     )
     seedAnalyticsDb(db, events)
     const retriever = new SessionRetriever(db)
-    const payload = retriever.buildReinjectionPayload('sess-1', null, 2000)
+    const payload = retriever.buildReinjectionPayload('sess-1', null, 2000, {
+      serenaAvailable: true,
+      rtkAvailable: true,
+    })
     expect(payload.tokens_estimated).toBeLessThanOrEqual(2000)
   })
 
@@ -64,7 +119,10 @@ describe('buildReinjectionPayload', () => {
     )
     seedAnalyticsDb(db, events)
     const retriever = new SessionRetriever(db)
-    const payload = retriever.buildReinjectionPayload('sess-1', null, 10)
+    const payload = retriever.buildReinjectionPayload('sess-1', null, 10, {
+      serenaAvailable: true,
+      rtkAvailable: true,
+    })
     expect(payload.truncated).toBe(true)
     expect(payload.dropped_count).toBeGreaterThan(0)
     const md = renderReinjectionMarkdown(payload)
@@ -87,7 +145,10 @@ describe('buildReinjectionPayload', () => {
     const durations: number[] = []
     for (let i = 0; i < runs; i++) {
       const start = performance.now()
-      retriever.buildReinjectionPayload('sess-1', null, 2000)
+      retriever.buildReinjectionPayload('sess-1', null, 2000, {
+        serenaAvailable: false,
+        rtkAvailable: false,
+      })
       durations.push(performance.now() - start)
     }
     durations.sort((a, b) => a - b)
@@ -99,7 +160,10 @@ describe('buildReinjectionPayload', () => {
     const db = getDb(':memory:')
     seedAnalyticsDb(db, [makeEvent({ session_id: 'sess-1' })])
     const retriever = new SessionRetriever(db)
-    const payload = retriever.buildReinjectionPayload('sess-1', null, 2000)
+    const payload = retriever.buildReinjectionPayload('sess-1', null, 2000, {
+      serenaAvailable: false,
+      rtkAvailable: false,
+    })
     const md = renderReinjectionMarkdown(payload)
     expect(md).toContain('sin presupuesto activo')
   })

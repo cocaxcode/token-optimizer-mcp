@@ -2,15 +2,21 @@
 
 ## Project Overview
 
-Orchestration + observability + coach layer for Claude Code token optimization. Measures tool usage, enforces token budgets, advises on complementary tools (serena, RTK), and proactively surfaces savings tips to the agent.
+Budget enforcement + coach layer + hook orchestration for Claude Code. The package:
 
-This package does NOT replace serena (symbolic file reads) or RTK (Bash output filtering). It coordinates with them and adds measurements, budgets, compact recovery, session search, and active coaching.
+- Enforces Bash token budgets via PreToolUse (warn/block).
+- Surfaces actionable savings tips through a coach layer (18 tips, 11 detection rules).
+- Bridges external tools — acts as RTK runtime for Bash output filtering; auto-enables serena shadow measurement when serena is detected.
+- Measures tool usage with strict "Medido vs Estimado" accounting (no fake numbers).
+- On `SessionStart:compact`, re-injects a compact payload with budget status and conditional reminders about detected tools (serena/RTK) when recent activity warrants them.
+
+What it does NOT do: symbolic code reads (serena does that), Bash output filtering as a standalone (RTK does that), cross-session semantic memory (engram does that), or full-text session search (removed in Phase 1.2 — no FTS5).
 
 ## Stack
 
 - TypeScript 5 (strict ESM, `module: NodeNext`)
 - `@modelcontextprotocol/sdk` ^1.27
-- `better-sqlite3` ^11 (WAL + FTS5)
+- `better-sqlite3` ^11 (WAL)
 - Zod 3.25+ raw shapes (NOT `z.object`)
 - Vitest 3.2+ with InMemoryTransport
 - tsup for ESM build
@@ -39,7 +45,7 @@ src/
 │   └── sessionstart.ts   # compact re-injection + coach tips
 ├── tools/                # MCP tools
 │   ├── budget.ts         # budget_set, budget_check, budget_report
-│   ├── session.ts        # session_search
+│   ├── session.ts        # noop (session_search removed in Phase 1.2)
 │   ├── orchestration.ts  # mcp_usage_stats, mcp_cost_report, optimization_status, mcp_prune_*
 │   ├── coach.ts          # coach_tips
 │   └── toon.ts           # toon_encode, toon_decode
@@ -70,7 +76,7 @@ src/
 │   ├── storage.ts        # ensureStorageDir + .gitignore
 │   └── token-estimator.ts
 ├── db/
-│   ├── schema.ts         # SCHEMA_SQL constant (tool_calls, budgets, coach_surface_log, events_fts, ...)
+│   ├── schema.ts         # SCHEMA_SQL constant (tool_calls, budgets, coach_surface_log, ...)
 │   ├── connection.ts     # getDb singleton (WAL, FK)
 │   └── queries.ts        # prepared statement factory
 └── __tests__/
@@ -91,18 +97,17 @@ src/
 - **Measurement honesty**: every `tool_calls` row carries an `estimation_method` column; reports always split "Medido vs Estimado"
 - **Source classification**: events from our own MCP tools are tagged `source: 'own'` (not `'mcp'`) to avoid counting our activity as external cost
 
-## Spec domains (10)
+## Spec domains (9)
 
 1. `async-analytics` — PostToolUse → bounded FIFO → SQLite batch flush
 2. `bash-budget-enforcement` — PreToolUse budget check (warn/block, never filters)
 3. `token-budgets` — budget_set/check/report MCP tools + service
-4. `compact-reinjection` — SessionStart:compact → re-injection payload
-5. `session-retrieval` — FTS5 search over tool_calls
-6. `cli-install` — install/uninstall/doctor/status/report/budget/prune-mcp/coach/config
-7. `orchestration` — detector + advisor + schema-measurer + 5 MCP tools
-8. `xray-integration` — fire-and-forget POST, getSessionTokens for context meter
-9. `toon-encoding` — toon_encode/decode thin wrappers (Phase 5 — dep deferred)
-10. `coach` — knowledge base + detection rules + context meter + 5 delivery channels
+4. `compact-reinjection` — SessionStart:compact → budget + conditional reminders (serena/RTK)
+5. `cli-install` — install/uninstall/doctor/status/report/budget/prune-mcp/coach/config
+6. `orchestration` — detector + advisor + schema-measurer + 5 MCP tools
+7. `xray-integration` — fire-and-forget POST, getSessionTokens for context meter
+8. `toon-encoding` — toon_encode/decode thin wrappers (Phase 5 — dep deferred)
+9. `coach` — knowledge base + detection rules + context meter + 5 delivery channels
 
 ## Commands
 
@@ -134,7 +139,7 @@ npm run inspector # MCP Inspector
 - **MCP resources**: 1 (`token-optimizer://coach/tips`)
 - **CLI subcommands**: 9 (install, uninstall, doctor, status, report, budget, prune-mcp, config, coach)
 - **Hooks**: 3 functional (pretooluse, posttooluse, sessionstart)
-- **Schema**: 8 tables + FTS5 virtual + 2 triggers + 4 indices, WAL mode
+- **Schema**: 8 tables + 2 triggers + 4 indices, WAL mode (FTS5 removed in Phase 1.2)
 - **Coach layer**: 18 tips, 11 rules (8 active + 3 stubs for external state), 3-source context meter, surface dedupe via SQL
 - **Coach surfacing**: active on SessionStart:compact (≤3 tips) + PostToolUse throttled (1 warn+ tip every N events, default 20)
 
