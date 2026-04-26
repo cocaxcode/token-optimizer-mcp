@@ -101,4 +101,21 @@ CREATE TABLE IF NOT EXISTS serena_symbol_touches (
 
 CREATE INDEX IF NOT EXISTS idx_serena_symbol_touches_session
   ON serena_symbol_touches(session_id, created_at DESC);
+
+-- Coach detection log. Opt-in instrumentation (config flag
+-- coach.detection_log_enabled, default false). Captures every rule hit,
+-- the channel that attempted to surface it, and the outcome. Used to
+-- decide what to prune/keep in the coach catalog and surfacing pipeline.
+CREATE TABLE IF NOT EXISTS coach_detection_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id TEXT NOT NULL,
+  rule_id TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  via_attempted TEXT NOT NULL,
+  outcome TEXT NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE INDEX IF NOT EXISTS idx_coach_detection_log_session
+  ON coach_detection_log(session_id, created_at DESC);
 `

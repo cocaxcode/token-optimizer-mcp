@@ -37,11 +37,33 @@ export interface BuildCoachSectionOptions {
   maxTips?: number
   dedupeWindowSeconds?: number
   via?: SurfacedVia
+  /**
+   * Opt-in instrumentation: when true, every rule hit considered by this
+   * function is recorded into coach_detection_log with its surfacing outcome.
+   * Off by default. Wrapped in try/catch so a logging error never blocks the hook.
+   */
+  detectionLogEnabled?: boolean
 }
 
 export interface CoachSectionResult {
   markdown: string | null
   hits: DetectionHit[]
+}
+
+type DetectionOutcome = 'surfaced' | 'deduped' | 'filtered_severity' | 'filtered_throttle'
+
+function logDetection(
+  queries: ReturnType<typeof buildQueries>,
+  sessionId: string,
+  hit: { rule_id: string; severity: DetectionSeverity },
+  via: SurfacedVia,
+  outcome: DetectionOutcome,
+): void {
+  try {
+    queries.insertCoachDetection(sessionId, hit.rule_id, hit.severity, via, outcome)
+  } catch {
+    // Never block the hook on logging failures
+  }
 }
 
 export async function buildCoachSectionMarkdown(
@@ -77,6 +99,17 @@ export async function buildCoachSectionMarkdown(
 
   const top = hits.slice(0, maxTips)
   const surfaced = surfaceWithDedupe(db, sessionId, top, via, dedupeWindow)
+
+  if (opts.detectionLogEnabled) {
+    const surfacedRuleIds = new Set(surfaced.map((h) => h.rule_id))
+    for (const hit of top) {
+      const outcome: DetectionOutcome = surfacedRuleIds.has(hit.rule_id)
+        ? 'surfaced'
+        : 'deduped'
+      logDetection(queries, sessionId, hit, via, outcome)
+    }
+  }
+
   if (surfaced.length === 0) return { markdown: null, hits: [] }
 
   const lines: string[] = ['## Tips del coach']
@@ -102,6 +135,13 @@ export interface BuildCoachHintSyncOptions {
   dedupeWindowSeconds?: number
   minSeverity?: DetectionSeverity
   via?: SurfacedVia
+  /**
+   * Opt-in instrumentation: when true, every rule hit considered by this
+   * function is recorded into coach_detection_log with its surfacing outcome
+   * ('filtered_severity' if it fell under minSeverity, 'surfaced' or 'deduped'
+   * for the top eligible hit). Off by default.
+   */
+  detectionLogEnabled?: boolean
 }
 
 export interface CoachHintResult {
@@ -144,12 +184,27 @@ export function buildCoachHintSync(
 
   const minRank = SEVERITY_RANK[minSeverity]
   const eligible = hits.filter((h) => SEVERITY_RANK[h.severity] >= minRank)
+
+  if (opts.detectionLogEnabled) {
+    for (const hit of hits) {
+      if (SEVERITY_RANK[hit.severity] < minRank) {
+        logDetection(queries, sessionId, hit, via, 'filtered_severity')
+      }
+    }
+  }
+
   if (eligible.length === 0) return { text: null, hit: null }
 
   // runRules already sorts by severity ascending (critical first). Take the highest.
   eligible.sort((a, b) => SEVERITY_RANK[b.severity] - SEVERITY_RANK[a.severity])
   const top = eligible.slice(0, 1)
   const surfaced = surfaceWithDedupe(db, sessionId, top, via, dedupeWindow)
+
+  if (opts.detectionLogEnabled && top.length > 0) {
+    const outcome: DetectionOutcome = surfaced.length > 0 ? 'surfaced' : 'deduped'
+    logDetection(queries, sessionId, top[0], via, outcome)
+  }
+
   if (surfaced.length === 0) return { text: null, hit: null }
 
   const hit = surfaced[0]
@@ -160,4 +215,44 @@ export function buildCoachHintSync(
   const emoji = SEVERITY_EMOJI[hit.severity] ?? '•'
   const text = `${emoji} Coach: **${tip.title}** — ${hit.evidence}. Cómo: \`${tip.how_to_invoke}\` (fuente: ${hit.estimation_method})`
   return { text, hit }
+}
+
+export interface LogThrottleSuppressedOptions {
+  db: DB
+  sessionId: string
+  activeModel?: string
+}
+
+/**
+ * Opt-in instrumentation called from PostToolUse when the throttle gate
+ * suppresses surfacing (count % throttle !== 0). Runs the rule pipeline
+ * and logs every hit as 'filtered_throttle' so we can see what we are
+ * silencing. Wrapped in try/catch by callers; safe to throw internally.
+ *
+ * Cost: one runRules pass + one INSERT per hit. Only invoked when the
+ * detection_log_enabled flag is on, so default-installed users pay zero.
+ */
+export function logThrottleSuppressedDetections(
+  opts: LogThrottleSuppressedOptions,
+): void {
+  const { db, sessionId } = opts
+  const context = measureContextSizeFromDbSync(db, sessionId, opts.activeModel)
+  const queries = buildQueries(db)
+  const since = new Date(Date.now() - 86_400_000).toISOString()
+  const rawRows = queries.getToolCallsSince(since) as ToolEvent[]
+  const events = rawRows.slice(0, 100)
+
+  const ctx: EventContext = {
+    session_id: sessionId,
+    events,
+    session_token_total: context.tokens,
+    session_token_method: context.estimation_method,
+    session_token_limit: context.limit,
+    active_model: opts.activeModel ?? null,
+  }
+
+  const hits = runRules(ctx)
+  for (const hit of hits) {
+    logDetection(queries, sessionId, hit, 'posttooluse', 'filtered_throttle')
+  }
 }

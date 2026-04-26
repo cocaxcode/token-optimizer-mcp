@@ -18,7 +18,7 @@ import {
 import { ensureStorageDir } from '../lib/storage.js'
 import { buildQueries } from '../db/queries.js'
 import { postToXray } from '../services/xray-client.js'
-import { buildCoachHintSync } from '../coach/session-section.js'
+import { buildCoachHintSync, logThrottleSuppressedDetections } from '../coach/session-section.js'
 import { loadConfig } from '../cli/config.js'
 import { hashCommand } from '../lib/command-hash.js'
 import type { ToolEvent, DetectionSeverity, EventSource } from '../lib/types.js'
@@ -86,6 +86,8 @@ export interface RunPostToolUseOptions {
   coachThrottle?: number
   coachDedupeWindowSeconds?: number
   coachMinSeverity?: DetectionSeverity
+  /** Override detection-log instrumentation flag for testing */
+  coachDetectionLogEnabled?: boolean
   home?: string
 }
 
@@ -258,7 +260,10 @@ export function runPostToolUseHook(
     if (coachEnabled) {
       const throttle = opts.coachThrottle ?? cfg.coach.posttooluse_throttle
       const count = queries.countToolCallsBySession(sessionId)
-      if (throttle > 0 && count > 0 && count % throttle === 0) {
+      const detectionLogEnabled =
+        opts.coachDetectionLogEnabled ?? cfg.coach.detection_log_enabled
+      const throttleAllows = throttle > 0 && count > 0 && count % throttle === 0
+      if (throttleAllows) {
         const hintOpts: Parameters<typeof buildCoachHintSync>[0] = {
           db,
           sessionId,
@@ -266,9 +271,18 @@ export function runPostToolUseHook(
             opts.coachDedupeWindowSeconds ?? cfg.coach.dedupe_window_seconds,
           minSeverity: opts.coachMinSeverity ?? 'warn',
           via: 'posttooluse',
+          detectionLogEnabled,
         }
         const hint = buildCoachHintSync(hintOpts)
         if (hint.text) additionalContext = hint.text
+      } else if (detectionLogEnabled) {
+        // Throttle gate suppressed surfacing this tick. Log what would have
+        // fired so we can later see whether the throttle is too aggressive.
+        try {
+          logThrottleSuppressedDetections({ db, sessionId })
+        } catch {
+          // Never block on logging
+        }
       }
     }
   } catch {

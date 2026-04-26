@@ -100,6 +100,12 @@ export function buildQueries(db: DB) {
      ORDER BY created_at DESC LIMIT ?`,
   )
 
+  // ── coach_detection_log ──
+  const insertCoachDetection = db.prepare(
+    `INSERT INTO coach_detection_log (session_id, rule_id, severity, via_attempted, outcome)
+     VALUES (?, ?, ?, ?, ?)`,
+  )
+
   // ── meta ──
   // ── rtk_rewrites ──
   const insertRtkRewrite = db.prepare(
@@ -274,6 +280,17 @@ export function buildQueries(db: DB) {
         name_path: string | null
         created_at: string
       }[]
+    },
+
+    // coach detection log
+    insertCoachDetection(
+      sessionId: string,
+      ruleId: string,
+      severity: string,
+      viaAttempted: string,
+      outcome: 'surfaced' | 'deduped' | 'filtered_severity' | 'filtered_throttle',
+    ) {
+      insertCoachDetection.run(sessionId, ruleId, severity, viaAttempted, outcome)
     },
   }
 }

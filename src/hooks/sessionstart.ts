@@ -30,6 +30,7 @@ export interface RunSessionStartOptions {
   coachEnabled?: boolean
   coachMaxTips?: number
   coachDedupeWindowSeconds?: number
+  coachDetectionLogEnabled?: boolean
   activeModel?: string
   home?: string
 }
@@ -117,6 +118,8 @@ export async function runSessionStartHook(
         dedupeWindowSeconds:
           opts.coachDedupeWindowSeconds ?? cfg.coach.dedupe_window_seconds,
         via: 'sessionstart',
+        detectionLogEnabled:
+          opts.coachDetectionLogEnabled ?? cfg.coach.detection_log_enabled,
       }
       if (opts.activeModel !== undefined) coachOpts.activeModel = opts.activeModel
       const coachResult = await buildCoachSectionMarkdown(coachOpts)

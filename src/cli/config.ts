@@ -17,6 +17,7 @@ export interface CoachConfig {
   }
   dedupe_window_seconds: number
   stale_tip_days: number
+  detection_log_enabled: boolean
 }
 
 export interface Config {
@@ -46,6 +47,7 @@ export const DEFAULT_CONFIG: Config = {
     },
     dedupe_window_seconds: 60,
     stale_tip_days: 90,
+    detection_log_enabled: false,
   },
 }
 
