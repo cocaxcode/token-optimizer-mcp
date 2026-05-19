@@ -416,15 +416,23 @@ describe('runInstall', () => {
     expect(empty?.hooks.some((h) => h.command.includes('--hook serena-activate'))).toBe(true)
   })
 
-  it('creates per-project storage dir when cwd is a git repo', () => {
+  it('does not create a per-project .token-optimizer dir', () => {
     fs.mkdirSync(path.join(cwd, '.git'), { recursive: true })
     runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_ABSENT })
-    const projectStorage = path.join(cwd, '.token-optimizer')
-    expect(fs.existsSync(projectStorage)).toBe(true)
-    // .gitignore should contain our entry
+    expect(fs.existsSync(path.join(cwd, '.token-optimizer'))).toBe(false)
+    const gitignore = path.join(cwd, '.gitignore')
+    if (fs.existsSync(gitignore)) {
+      expect(fs.readFileSync(gitignore, 'utf8')).not.toContain('.token-optimizer/')
+    }
+  })
+
+  it('appends .serena/ to .gitignore when a .serena dir exists in a git repo', () => {
+    fs.mkdirSync(path.join(cwd, '.git'), { recursive: true })
+    fs.mkdirSync(path.join(cwd, '.serena'), { recursive: true })
+    runInstall([], { home, cwd, print, runDoctorAtEnd: false, serenaProbe: PROBE_ABSENT })
     const gitignore = path.join(cwd, '.gitignore')
     expect(fs.existsSync(gitignore)).toBe(true)
-    expect(fs.readFileSync(gitignore, 'utf8')).toContain('.token-optimizer/')
+    expect(fs.readFileSync(gitignore, 'utf8')).toContain('.serena/')
   })
 })
 

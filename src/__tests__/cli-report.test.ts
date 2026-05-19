@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { runReport } from '../cli/report.js'
 import { closeDb, getDb } from '../db/connection.js'
 import { seedAnalyticsDb, makeEvent } from './helpers.js'
-import { resolveAnalyticsDbPath, resolveStorageDir } from '../lib/paths.js'
+import { resolveAnalyticsDbPath } from '../lib/paths.js'
 
 describe('runReport', () => {
   let cwd: string
@@ -49,8 +49,7 @@ describe('runReport', () => {
   })
 
   it('renders Medido / Estimado split with seeded mixed-source fixture', () => {
-    const storageDir = resolveStorageDir(cwd)
-    fs.mkdirSync(storageDir, { recursive: true })
+    fs.mkdirSync(path.join(cwd, '.token-optimizer'), { recursive: true })
     const dbPath = resolveAnalyticsDbPath(cwd)
     const db = getDb(dbPath)
 

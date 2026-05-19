@@ -15,7 +15,7 @@ import {
   resolveAnalyticsDbPath,
   projectHash,
 } from '../lib/paths.js'
-import { ensureStorageDir } from '../lib/storage.js'
+import { ensureGitignore } from '../lib/storage.js'
 import { buildQueries } from '../db/queries.js'
 import { postToXray } from '../services/xray-client.js'
 import { buildCoachHintSync } from '../coach/session-section.js'
@@ -149,7 +149,7 @@ export function runPostToolUseHook(
     if (opts.dbPath !== undefined) {
       dbPath = opts.dbPath
     } else {
-      ensureStorageDir(projectDir)
+      ensureGitignore(projectDir)
       dbPath = resolveAnalyticsDbPath(projectDir)
     }
     const db = getDb(dbPath)

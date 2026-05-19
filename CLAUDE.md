@@ -92,7 +92,7 @@ src/
 - **Error handling**: tool handlers never throw — return `{ isError: true, content: [...] }`
 - **Logging**: ONLY `console.error()` — stdout is reserved for JSON-RPC / hook output
 - **Hooks**: PostToolUse NEVER sets `updatedMCPToolOutput` (per anthropics/claude-code#36843). PreToolUse sets `updatedInput` + `permissionDecision: "allow"` for RTK rewrite (exit 0 and 3); budget block always wins over RTK rewrite. **Hooks require `npm install -g @cocaxcode/token-optimizer-mcp`** — without global install, `npx` can't find the binary and hooks fail silently. Session restart required after install.
-- **Storage split**: global in `~/.token-optimizer/`, per-project in `{projectDir}/.token-optimizer/` (auto-gitignored)
+- **Storage**: all global in `~/.token-optimizer/` (`analytics.db`, `config.json`); no per-project dir. The MCP only auto-appends `.serena/` to a project's `.gitignore` when that dir exists
 - **Confirm pattern**: destructive tools (`mcp_prune_apply`, `mcp_prune_rollback`) require `confirm: true`
 - **Measurement honesty**: every `tool_calls` row carries an `estimation_method` column; reports always split "Medido vs Estimado"
 - **Source classification**: events from our own MCP tools are tagged `source: 'own'` (not `'mcp'`) to avoid counting our activity as external cost

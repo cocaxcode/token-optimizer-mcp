@@ -30,10 +30,6 @@ export function resolveProjectDir(cwd: string = process.cwd()): string {
   }
 }
 
-export function resolveStorageDir(projectDir: string): string {
-  return path.join(projectDir, '.token-optimizer')
-}
-
 /**
  * Path to the analytics DB. v0.4.7+: always returns the global DB under ~/.token-optimizer/
  * so hooks, CLI and MCP tools share a single source of truth regardless of CWD.

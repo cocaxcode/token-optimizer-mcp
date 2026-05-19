@@ -4,7 +4,7 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { getDb } from './db/connection.js'
 import { resolveProjectDir, resolveAnalyticsDbPath } from './lib/paths.js'
-import { ensureStorageDir } from './lib/storage.js'
+import { ensureGitignore } from './lib/storage.js'
 import { registerBudgetTools } from './tools/budget.js'
 import { registerSessionTools } from './tools/session.js'
 import { registerOrchestrationTools } from './tools/orchestration.js'
@@ -36,7 +36,7 @@ export function createServer(options: CreateServerOptions = {}): McpServer {
     options.dbPath ??
     (options.storageDir === ':memory:'
       ? ':memory:'
-      : (ensureStorageDir(resolvedProject), resolveAnalyticsDbPath(resolvedProject)))
+      : (ensureGitignore(resolvedProject), resolveAnalyticsDbPath(resolvedProject)))
 
   // Initialize DB (schema created by getDb)
   const db = getDb(dbPath)

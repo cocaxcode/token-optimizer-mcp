@@ -1,13 +1,13 @@
-// Storage dir initialization — Phase 1.5
-// Creates .token-optimizer/ and appends to .gitignore idempotently
+// Gitignore management — appends .serena/ to .gitignore idempotently.
+// The MCP no longer creates a per-project .token-optimizer/ dir: all storage
+// is global under ~/.token-optimizer/ (analytics.db, config.json).
 
 import fs from 'node:fs'
 import path from 'node:path'
-import { resolveStorageDir } from './paths.js'
 
-const GITIGNORE_ENTRIES = ['.token-optimizer/', '.serena/']
+const GITIGNORE_ENTRIES = ['.serena/']
 
-function ensureGitignoreEntries(projectDir: string): void {
+export function ensureGitignore(projectDir: string): void {
   const gitDir = path.join(projectDir, '.git')
   if (!fs.existsSync(gitDir)) return
 
@@ -23,13 +23,4 @@ function ensureGitignoreEntries(projectDir: string): void {
   if (missing.length === 0) return
   const prefix = current.length > 0 && !current.endsWith('\n') ? '\n' : ''
   fs.appendFileSync(gitignorePath, `${prefix}${missing.join('\n')}\n`)
-}
-
-export function ensureStorageDir(projectDir: string): string {
-  const storageDir = resolveStorageDir(projectDir)
-  if (!fs.existsSync(storageDir)) {
-    fs.mkdirSync(storageDir, { recursive: true })
-  }
-  ensureGitignoreEntries(projectDir)
-  return storageDir
 }

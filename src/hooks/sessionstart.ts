@@ -9,7 +9,7 @@ import {
   resolveAnalyticsDbPath,
   projectHash,
 } from '../lib/paths.js'
-import { ensureStorageDir } from '../lib/storage.js'
+import { ensureGitignore } from '../lib/storage.js'
 import { renderReinjectionMarkdown } from '../services/session-retriever.js'
 import { buildCoachSectionMarkdown } from '../coach/session-section.js'
 import { loadConfig } from '../cli/config.js'
@@ -69,7 +69,7 @@ export async function runSessionStartHook(
     if (opts.dbPath !== undefined) {
       dbPath = opts.dbPath
     } else {
-      ensureStorageDir(projectDir)
+      ensureGitignore(projectDir)
       dbPath = resolveAnalyticsDbPath(projectDir)
     }
     const db = getDb(dbPath)

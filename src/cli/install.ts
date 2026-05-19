@@ -1,12 +1,12 @@
 // Install CLI — Phase 4.10
 // Writes token-optimizer mcpServers entry + 3 hooks into ~/.claude/settings.json
-// Also creates per-project storage dir and appends .gitignore in git repos.
+// Also appends .gitignore entries in git repos.
 
 import fs from 'node:fs'
 import path from 'node:path'
 import os from 'node:os'
 import { spawnSync } from 'node:child_process'
-import { ensureStorageDir } from '../lib/storage.js'
+import { ensureGitignore } from '../lib/storage.js'
 import { probeSerenaPresence, type SerenaProbe } from '../hooks/serena-activate.js'
 import { runDoctor } from './doctor.js'
 import { loadConfig, saveConfig, getConfigPath } from './config.js'
@@ -336,7 +336,7 @@ export function runInstall(_args: string[] = [], opts: InstallOptions = {}): num
 
   // Per-project storage dir (only in git repos)
   if (fs.existsSync(path.join(cwd, '.git'))) {
-    ensureStorageDir(cwd)
+    ensureGitignore(cwd)
   }
 
   print('token-optimizer-mcp instalado correctamente.')

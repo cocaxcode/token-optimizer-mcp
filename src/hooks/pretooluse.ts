@@ -12,7 +12,7 @@ import {
   resolveAnalyticsDbPath,
   projectHash,
 } from '../lib/paths.js'
-import { ensureStorageDir } from '../lib/storage.js'
+import { ensureGitignore } from '../lib/storage.js'
 import { findRtkBinary, rtkRewrite } from '../lib/rtk-bridge.js'
 import { hashCommand } from '../lib/command-hash.js'
 
@@ -86,7 +86,7 @@ export function runPreToolUseHook(
     if (opts.dbPath !== undefined) {
       dbPath = opts.dbPath
     } else {
-      ensureStorageDir(projectDir)
+      ensureGitignore(projectDir)
       dbPath = resolveAnalyticsDbPath(projectDir)
     }
     const db = getDb(dbPath)
@@ -125,7 +125,7 @@ export function runPreToolUseHook(
             const dbPath =
               opts.dbPath !== undefined
                 ? opts.dbPath
-                : (ensureStorageDir(projectDir), resolveAnalyticsDbPath(projectDir))
+                : (ensureGitignore(projectDir), resolveAnalyticsDbPath(projectDir))
             const db = getDb(dbPath)
             const queries = buildQueries(db)
             queries.insertRtkRewrite(sessionId, hashCommand(command), result.rewritten)

@@ -3,7 +3,6 @@ import path from 'node:path'
 import os from 'node:os'
 import {
   normalizePath,
-  resolveStorageDir,
   resolveAnalyticsDbPath,
   projectHash,
   resolveTranscriptPath,
@@ -24,11 +23,6 @@ describe('paths', () => {
     } else {
       expect(n).toBe(path.resolve('/Some/Path'))
     }
-  })
-
-  it('resolveStorageDir appends .token-optimizer', () => {
-    const d = resolveStorageDir('/tmp/project')
-    expect(d.endsWith('.token-optimizer')).toBe(true)
   })
 
   it('resolveAnalyticsDbPath ends with analytics.db', () => {
